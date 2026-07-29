@@ -12,7 +12,7 @@ const ROLE_EXPECTATIONS: { button: string; landingPath: RegExp; navItems: string
     // manageRoles, true only for Admin by default — see CHANGELOG.md.
     button: 'Admin',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'Users & roles', 'Teams', 'Roles & permissions', 'Audit log', 'Labels', 'Business categories', 'SLA policies', 'AI integrations'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'Users & roles', 'Teams', 'Roles & permissions', 'Workflow', 'GitHub integration', 'Audit log', 'Labels', 'Business categories', 'SLA policies', 'AI integrations'],
   },
   {
     // Director gained Analytics access as part of the leadership-visibility

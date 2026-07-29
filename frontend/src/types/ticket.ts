@@ -88,6 +88,25 @@ export interface TestCase {
   createdAt: string;
 }
 
+export type PrState = 'open' | 'closed' | 'merged';
+export type PrReviewState = 'pending' | 'approved' | 'changes_requested';
+
+export interface PullRequestLink {
+  id: string;
+  ticketId: string;
+  number: number;
+  title: string;
+  url: string;
+  headRef: string;
+  authorLogin: string;
+  state: PrState;
+  reviewState: PrReviewState;
+  merged: boolean;
+  linkedManually: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Ticket {
   id: string;
   displayId: string;
@@ -135,9 +154,10 @@ export interface Ticket {
   comments?: TicketComment[];
   attachments?: TicketAttachment[];
   timeEntries?: TimeEntry[];
+  pullRequests?: PullRequestLink[];
   totalLoggedMinutes?: number;
   hasRunningTimer?: boolean;
-  _count?: { attachments: number; comments: number };
+  _count?: { attachments: number; comments: number; pullRequests?: number };
 }
 
 export interface FieldChange {

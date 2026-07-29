@@ -3,6 +3,79 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-29 — Configurable workflow gates, GitHub integration, multi-dimension board
+
+User request: audit the change-management system, add configurable stage gates between ticket statuses,
+integrate GitHub so status syncs from PR activity instead of manual updates, show PRs/approvals inside the
+ticket (Jira-style), and research/add more boards. Full audit + researched roadmap in
+`docs/change-management-audit.md`. Built on branch `feature/workflow-github-boards`.
+
+### Audit finding — what was wrong
+Ticket status transitions were **completely unconstrained** (any role could jump any ticket to any status;
+the only rule was a hardcoded cap on source/reporter-scoped roles). There was **one** board (a fixed 5-column
+status Kanban) and **no** GitHub/VCS integration — status was 100% manual, with no branch/PR/approval
+visibility on tickets.
+
+### Added — admin-configurable workflow with stage gates
+- New `WorkflowTransition` model (org-level): one row per allowed `fromStatus → toStatus`, with opt-in gates
+  `requiresAssignee` / `requiresLinkedPr` / `requiresApprovedPr` / `requiresMergedPr` / `requiresQaPass`, plus
+  an optional `allowedRoleIds` role restriction.
+- `WorkflowService.evaluate()` is the single gate check, used by **both** manual status changes
+  (`TicketsService.updateStatus`, replacing the old hardcoded `isAllowedRestrictedStatus` for full-access
+  roles) **and** GitHub auto-transitions — so automation can never move a ticket through a gate a human
+  couldn't. `gateContextFor()` builds the gate inputs from the ticket's PRs + QA test cases.
+- Seeded with a **permissive default** (a sensible forward/back/close transition graph, all gates off) so the
+  app is usable immediately and no ticket type is wedged; admins tighten it at the new **/workflow** admin
+  page (transition matrix + gate checkboxes + add/remove transitions). New `manageWorkflow` permission
+  (admin-only by default), added to `RolePermissions`, all 12 roles, both role-editor UIs, and the DTO.
+- The ticket status picker and the board's drag drop-targets are now workflow-aware — only valid transitions
+  are offered, and a blocked move surfaces the gate reason (e.g. "A merged pull request is required…") via a
+  toast on the board / inline error on the ticket, instead of failing silently.
+
+### Added — GitHub integration (no more manual status updates)
+- New `GithubIntegration` model (per-org): repo owner/name, an AES-256-GCM-encrypted personal access token
+  (write-only, same envelope as AI provider keys — `github/github-crypto.util.ts`, distinct salt), a per-org
+  webhook secret, an `autoTransition` toggle, and a status map (`onPrOpenedStatus` / `onPrApprovedStatus` /
+  `onPrMergedStatus`). Admin page at **/github**.
+- `POST /github/webhook` — HMAC-verified (`X-Hub-Signature-256` over the raw request body; `main.ts` now
+  boots with `rawBody: true`, and `GithubWebhookGuard` does a constant-time compare against the stored
+  secret). Handles `pull_request` and `pull_request_review` events.
+- **Auto-linking**: a PR attaches to every ticket whose displayId (e.g. `ATLAS-1001`) appears in its branch
+  name, title, or body — the Jira/GitHub smart-commit convention. New `GithubPullRequest` model caches PR
+  state (open/closed/merged), review state (pending/approved/changes_requested), branch, and author.
+- **Auto-transition**: on PR open/approve/merge the linked ticket moves per the status map — always through
+  the workflow gates. Automated moves are attributed to a per-org "GitHub Automation" system user (find-or-
+  create, mirroring email-intake's auto-provision; excluded from the Users & Roles list) so activity-log
+  actor FKs stay honest.
+- **Jira-style Development panel** on the ticket detail (`DevelopmentPanel.tsx`): linked PRs with state badge,
+  review/approval state, branch, author, and a link out to GitHub; unlink control. Ticket detail response now
+  includes `pullRequests`.
+
+### Added — multi-dimension board
+- The Kanban gained a **Group by** switcher — **Status** (classic draggable, workflow-gated columns),
+  **Assignee**, **Priority**, **Type**, and **Epic** (swimlanes with per-lane counts, tickets ordered by
+  status within each lane). Cards show a "N PRs linked" badge. The ticket-list include now carries `parent`
+  and a `pullRequests` count to power epic lanes and the badge without pulling every PR row.
+
+### Fixed — permission hydration backfills newly-added fields
+Adding `manageWorkflow` to `RolePermissions` surfaced a latent bug: `RolesService.onModuleInit()` loaded a
+role's stored `permissionsJson` into the cache **as-is**, so a role edited before a new permission field
+existed came back missing that key — and since the update DTO now requires every field, saving that role's
+permissions 400'd ("manageWorkflow must be a boolean value"). Fixed by merging stored permissions over a
+complete default (`withPermissionDefaults()` / new `BASELINE_PERMISSIONS`): built-in roles merge over their
+hardcoded default, custom roles over a locked-down baseline, so a capability added later defaults to OFF for
+a pre-existing role and the returned object always has every key. Forward-compatible for the next permission
+field too.
+
+### Added / changed — tests
+- New: `e2e/tests/workflow-gates.spec.ts` (gate config UI + nav gating + full block→link-merged-PR→allow
+  enforcement), `github-webhook.spec.ts` (HMAC rejection, signed PR-open auto-link + auto-transition verified
+  through the Development panel, review-approval state), `board-grouping.spec.ts` (all five groupings).
+- Updated three pre-existing tests for the now-deterministic transition rules: `tickets.spec.ts` (status-
+  persist test now creates a fresh Open ticket and does the valid Open→InProgress move instead of an
+  arbitrary jump on an unknown-status row), `role-sweep.spec.ts` (Admin nav list gained Workflow + GitHub
+  integration). `ticket-dates.spec.ts`'s Open→Closed path remains valid under the default workflow.
+
 ## 2026-07-28 — Basecamp-style project folders, ticket date fields, campaign tracking
 
 ### Fixed — ticket time-logged history now shows which date work happened

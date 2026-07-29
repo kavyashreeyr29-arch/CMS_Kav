@@ -17,7 +17,7 @@ export function setToken(token: string | null) {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | undefined>;
 }
@@ -57,6 +57,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
   get: <T>(path: string, query?: RequestOptions['query']) => request<T>(path, { method: 'GET', query }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
+  put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

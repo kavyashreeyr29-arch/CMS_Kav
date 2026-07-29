@@ -5,6 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { TimersGateway } from '../realtime/timers.gateway';
+import { WorkflowService } from '../workflow/workflow.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { RolePermissions } from '../common/permissions/role-permissions';
 import { serializeTicketForViewer, ticketVisibilityWhere } from '../common/permissions/ticket-scope';
@@ -50,7 +51,10 @@ const TICKET_INCLUDE = {
   reward: { select: { id: true, name: true } },
   reporter: { select: SAFE_USER_SELECT },
   assignee: { select: SAFE_USER_SELECT },
-  _count: { select: { attachments: true, comments: true } },
+  // parent + PR count power the board's Epic swimlanes and the "N PRs linked"
+  // card badge without pulling every PR row on a 200-ticket list.
+  parent: { select: { id: true, displayId: true, title: true } },
+  _count: { select: { attachments: true, comments: true, pullRequests: true } },
 } satisfies Prisma.TicketInclude;
 
 /** Activity-log text only — the ticket-list/detail UI has its own formatter. */
@@ -68,6 +72,7 @@ export class TicketsService {
     private readonly notifications: NotificationsService,
     private readonly activityLog: ActivityLogService,
     private readonly timersGateway: TimersGateway,
+    private readonly workflow: WorkflowService,
   ) {}
 
   async findAll(user: AuthenticatedUser, perms: RolePermissions, query: QueryTicketsDto) {
@@ -142,6 +147,7 @@ export class TicketsService {
         timeEntries: { include: { user: { select: SAFE_USER_SELECT } } },
         parent: { select: { id: true, displayId: true, title: true } },
         children: { select: { id: true, displayId: true, title: true, status: true }, orderBy: { displayId: 'asc' } },
+        pullRequests: { orderBy: { updatedAt: 'desc' } },
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found or not visible to your role');
@@ -232,8 +238,20 @@ export class TicketsService {
     const ticket = await this.mustFindRaw(id, user, perms);
     if (ticket.status === status) return serializeTicketForViewer(ticket, perms);
 
+    // Source/reporter-scoped roles keep their coarse hard limit (they never
+    // touch the dev workflow) — the configurable gate matrix governs the
+    // full-visibility delivery roles.
     if (perms.restrictedStatuses && !this.isAllowedRestrictedStatus(status)) {
       throw new ForbiddenException('Your role can only set status to Open, In Progress, or Closed');
+    }
+
+    // Admin-configurable workflow gates (WorkflowService) — replaces the old
+    // "any transition allowed" behavior. Skipped for restricted-status roles,
+    // whose narrow set is already enforced above and predates the workflow.
+    if (!perms.restrictedStatuses) {
+      const ctx = await this.workflow.gateContextFor(id, !!ticket.assigneeUserId);
+      const reason = await this.workflow.evaluate(user.orgId, ticket.status, status, user.baseRoleId, ctx);
+      if (reason) throw new BadRequestException(reason);
     }
 
     const updated = await this.prisma.ticket.update({

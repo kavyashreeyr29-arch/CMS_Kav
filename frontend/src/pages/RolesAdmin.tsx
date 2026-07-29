@@ -20,6 +20,7 @@ const PERMISSION_FIELDS: { key: keyof RolePermissions; label: string }[] = [
   { key: 'canReopen', label: 'Reopen a closed ticket' },
   { key: 'restrictedStatuses', label: 'Restricted to Open / In Progress / Closed only' },
   { key: 'manageRoles', label: 'Create roles & edit any role\'s permissions (admin-level)' },
+  { key: 'manageWorkflow', label: 'Configure workflow gates & GitHub integration' },
 ];
 
 const SCOPES: { value: Scope; label: string }[] = [
@@ -40,7 +41,7 @@ const BLANK_PERMISSIONS: RolePermissions = {
   scope: 'all', dashboard: false, projects: false, board: false, comms: false, createProject: false,
   userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
   simpleDashboard: false, canReopen: false, timeTracking: false, restrictedStatuses: false,
-  workHoursVisibility: 'none', manageRoles: false,
+  workHoursVisibility: 'none', manageRoles: false, manageWorkflow: false,
 };
 
 // Admin-only "Roles & Permissions" editor (CHANGELOG.md "dynamic RBAC") —

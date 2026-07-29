@@ -37,6 +37,10 @@ export interface RolePermissions {
   // built-in `admin` role by default; not currently grantable to a custom
   // role via the UI, so a custom role can't self-escalate.
   manageRoles: boolean;
+  // Gates the Workflow admin screen (configure status-transition gates) and
+  // the GitHub integration admin screen. Both are org-process configuration,
+  // so they share one capability rather than proliferating two flags.
+  manageWorkflow: boolean;
 }
 
 // The 12 built-in roles every environment seeds (prisma/seed.ts ROLE_SEED).
@@ -66,56 +70,56 @@ export const ROLE_PERMISSIONS: Record<RoleId, RolePermissions> = {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: true, manageLabels: true, manageSLA: true, manageAI: true, adminAnalytics: true,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'org',
-    manageRoles: true,
+    manageRoles: true, manageWorkflow: true,
   },
   director: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: true,
     simpleDashboard: false, canReopen: true, timeTracking: false, restrictedStatuses: false, workHoursVisibility: 'org',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   pm: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: true,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'org',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   // Lead/Manager seniority overrides `scope` to "team" at runtime — see effectivePermissions().
   lead: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'team',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   senior_developer: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'own',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   junior_developer: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'own',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   intern: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'own',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   qa: {
     scope: 'all', dashboard: true, projects: true, board: true, comms: true, createProject: true,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: true, restrictedStatuses: false, workHoursVisibility: 'own',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   callcenter: {
     scope: 'source', dashboard: false, projects: true, board: false, comms: false, createProject: false,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: true, canReopen: false, timeTracking: false, restrictedStatuses: true, workHoursVisibility: 'none',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   customersuccess: {
     scope: 'source', dashboard: false, projects: true, board: true, comms: false, createProject: false,
@@ -128,21 +132,44 @@ export const ROLE_PERMISSIONS: Record<RoleId, RolePermissions> = {
     // per-role rather than building a second narrower gate.
     adminAnalytics: true,
     simpleDashboard: true, canReopen: false, timeTracking: false, restrictedStatuses: false, workHoursVisibility: 'none',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   operations: {
     scope: 'source', dashboard: false, projects: false, board: false, comms: false, createProject: false,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: true, canReopen: false, timeTracking: false, restrictedStatuses: true, workHoursVisibility: 'none',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
   client: {
     scope: 'reporter', dashboard: false, projects: false, board: false, comms: false, createProject: false,
     userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
     simpleDashboard: false, canReopen: true, timeTracking: false, restrictedStatuses: true, workHoursVisibility: 'none',
-    manageRoles: false,
+    manageRoles: false, manageWorkflow: false,
   },
 };
+
+// Safe all-locked-down baseline — every capability off, narrowest scope.
+// Used to backfill a stored permissionsJson that predates a newly-added
+// permission field (see withPermissionDefaults), so adding a field to
+// RolePermissions can never leave an existing role's cached/returned object
+// missing a key (which would 400 the update DTO). A new capability defaults
+// to OFF for a role that was configured before it existed — the safe choice.
+export const BASELINE_PERMISSIONS: RolePermissions = {
+  scope: 'reporter', dashboard: false, projects: false, board: false, comms: false, createProject: false,
+  userManagement: false, manageLabels: false, manageSLA: false, manageAI: false, adminAnalytics: false,
+  simpleDashboard: false, canReopen: false, timeTracking: false, restrictedStatuses: false,
+  workHoursVisibility: 'none', manageRoles: false, manageWorkflow: false,
+};
+
+/**
+ * Merge a stored (possibly stale) permissions object over a complete default
+ * so the result always has every RolePermissions key. Built-in roles merge
+ * over their hardcoded default; custom roles over the locked-down baseline.
+ */
+export function withPermissionDefaults(roleId: string, stored: Partial<RolePermissions>): RolePermissions {
+  const base = (ROLE_PERMISSIONS as Record<string, RolePermissions>)[roleId] ?? BASELINE_PERMISSIONS;
+  return { ...base, ...stored };
+}
 
 const permissionsCache = new Map<string, RolePermissions>(Object.entries(ROLE_PERMISSIONS));
 

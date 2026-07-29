@@ -10,6 +10,11 @@ export default () => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '8h',
   },
   aiEncryptionKey: process.env.AI_ENCRYPTION_KEY,
+  // Reuses AI_ENCRYPTION_KEY for at-rest encryption of the GitHub token
+  // (same AES-256-GCM scheme, distinct salt — see github/github-crypto.util.ts)
+  // so there's one secret to manage. Webhook signatures use a per-org secret
+  // stored on GithubIntegration, not this key.
+  githubEncryptionKey: process.env.GITHUB_ENCRYPTION_KEY ?? process.env.AI_ENCRYPTION_KEY,
   emailIntake: {
     // Shared secret an inbound-email provider (SES/SNS, SendGrid Inbound
     // Parse, Mailgun Routes) must send back on every webhook call — see

@@ -5,7 +5,10 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody exposes req.rawBody (the exact bytes) so GitHub webhook HMAC
+  // signatures can be verified against the payload as GitHub signed it —
+  // JSON.stringify(req.body) would not byte-match. See GithubWebhookGuard.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix(config.get<string>('apiPrefix')!);

@@ -26,6 +26,8 @@ import { CampaignsModule } from './campaigns/campaigns.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ProjectTodosModule } from './project-todos/project-todos.module';
 import { ProjectNotesModule } from './project-notes/project-notes.module';
+import { WorkflowModule } from './workflow/workflow.module';
+import { GithubModule } from './github/github.module';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { ProjectNotesModule } from './project-notes/project-notes.module';
     RewardsModule,
     ProjectTodosModule,
     ProjectNotesModule,
+    WorkflowModule,
+    GithubModule,
   ],
 })
 export class AppModule {}

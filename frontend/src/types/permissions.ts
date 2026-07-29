@@ -20,6 +20,7 @@ export interface RolePermissions {
   restrictedStatuses: boolean;
   workHoursVisibility: WorkHoursVisibility;
   manageRoles: boolean;
+  manageWorkflow: boolean;
 }
 
 export interface RoleSummary {

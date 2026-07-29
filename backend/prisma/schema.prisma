@@ -149,6 +149,8 @@ model Org {
   aiProviderConfigs AiProviderConfig[]
   aiUsageLogs       AiUsageLog[]
   auditLogEntries   AuditLogEntry[]
+  workflowTransitions WorkflowTransition[]
+  githubIntegration GithubIntegration?
 
   @@map("orgs")
 }
@@ -467,6 +469,7 @@ model Ticket {
   notifications Notification[]
   fieldChanges TicketFieldChange[]
   testCases    TicketTestCase[]
+  pullRequests GithubPullRequest[]
 
   @@index([projectId])
   @@index([reporterUserId])
@@ -764,4 +767,106 @@ model AiUsageLog {
   org Org @relation(fields: [orgId], references: [id])
 
   @@map("ai_usage_log")
+}
+
+// ---------------------------------------------------------------------------
+// Configurable workflow (admin-defined transition gates)
+// ---------------------------------------------------------------------------
+
+// Replaces the old hardcoded transition rule (TicketsService.isAllowedRestrictedStatus).
+// One row = one allowed status transition for the org, plus the gate
+// conditions that must hold before the move is permitted. A move with no
+// matching row is rejected. Seeded with a sensible default flow
+// (prisma/seed.ts) so behavior is defined out of the box; admins edit it at
+// /workflow. Kept org-level (not per-project) for v1 — the whole org shares
+// one delivery process, matching how Roles/SLA defaults already work.
+model WorkflowTransition {
+  id                  String       @id @default(uuid())
+  orgId               String       @map("org_id")
+  fromStatus          TicketStatus @map("from_status")
+  toStatus            TicketStatus @map("to_status")
+  // Gates — all that are true must be satisfied for the transition to pass.
+  requiresAssignee    Boolean      @default(false) @map("requires_assignee")
+  requiresLinkedPr    Boolean      @default(false) @map("requires_linked_pr")
+  requiresApprovedPr  Boolean      @default(false) @map("requires_approved_pr")
+  requiresMergedPr    Boolean      @default(false) @map("requires_merged_pr")
+  requiresQaPass      Boolean      @default(false) @map("requires_qa_pass")
+  // Optional role restriction — empty means any role with ticket access may
+  // perform the transition (subject to the gates above).
+  allowedRoleIds      String[]     @map("allowed_role_ids")
+  createdAt           DateTime     @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, fromStatus, toStatus])
+  @@map("workflow_transitions")
+}
+
+// ---------------------------------------------------------------------------
+// GitHub integration (auto status sync + PR/branch visibility on tickets)
+// ---------------------------------------------------------------------------
+
+// Per-org GitHub connection. Token is write-only, AES-256-GCM encrypted the
+// same way AiProviderConfig.apiKeyEncrypted is (backend/src/ai/crypto.util.ts,
+// reused). webhookSecret verifies inbound webhook HMAC signatures. The
+// status-map columns drive automatic ticket transitions on PR events; any
+// auto-move still passes through the configured WorkflowTransition gates, so
+// GitHub can never push a ticket through a gate a human couldn't.
+model GithubIntegration {
+  id                  String       @id @default(uuid())
+  orgId               String       @unique @map("org_id")
+  repoOwner           String       @map("repo_owner")
+  repoName            String       @map("repo_name")
+  tokenEncrypted      Bytes?       @map("token_encrypted") // write-only; enables REST backfill; null = webhook-only
+  webhookSecret       String       @map("webhook_secret")
+  autoTransition      Boolean      @default(true) @map("auto_transition")
+  // Status a ticket auto-moves to when a linked PR opens / is approved /
+  // merges. Null disables that particular auto-move.
+  onPrOpenedStatus    TicketStatus? @map("on_pr_opened_status")
+  onPrApprovedStatus  TicketStatus? @map("on_pr_approved_status")
+  onPrMergedStatus    TicketStatus? @map("on_pr_merged_status")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  org         Org                 @relation(fields: [orgId], references: [id])
+
+  @@map("github_integrations")
+}
+
+enum PrState {
+  open
+  closed
+  merged
+}
+
+enum PrReviewState {
+  pending
+  approved
+  changes_requested
+}
+
+// A pull request (or its head branch) linked to a ticket. Linked
+// automatically by matching the ticket displayId (e.g. "ATLAS-1001") in the
+// PR title/body/branch name, or manually via the ticket Development panel.
+// State is a cache of GitHub's, refreshed by webhook events and manual sync.
+model GithubPullRequest {
+  id            String        @id @default(uuid())
+  ticketId      String        @map("ticket_id")
+  number        Int
+  title         String
+  url           String
+  headRef       String        @map("head_ref") // branch name
+  authorLogin   String        @map("author_login")
+  state         PrState       @default(open)
+  reviewState   PrReviewState @default(pending) @map("review_state")
+  merged        Boolean       @default(false)
+  linkedManually Boolean      @default(false) @map("linked_manually")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, number])
+  @@index([ticketId])
+  @@map("github_pull_requests")
 }

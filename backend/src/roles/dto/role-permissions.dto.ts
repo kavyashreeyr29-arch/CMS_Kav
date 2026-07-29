@@ -60,4 +60,7 @@ export class RolePermissionsDto implements RolePermissions {
 
   @IsBoolean()
   manageRoles: boolean;
+
+  @IsBoolean()
+  manageWorkflow: boolean;
 }

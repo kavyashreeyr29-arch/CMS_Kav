@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { RolePermissions, permissionsFor, setRolePermissions, setSourceForRole } from '../common/permissions/role-permissions';
+import { RolePermissions, permissionsFor, setRolePermissions, setSourceForRole, withPermissionDefaults } from '../common/permissions/role-permissions';
 import { AuditLogService, diffFields } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -28,7 +28,10 @@ export class RolesService implements OnModuleInit {
     const roles = await this.prisma.role.findMany();
     for (const role of roles) {
       if (role.permissionsJson) {
-        setRolePermissions(role.id, role.permissionsJson as unknown as RolePermissions);
+        // Merge over the complete default so a stored JSON written before a new
+        // permission field existed is backfilled — otherwise the matrix (and
+        // the update DTO that requires every field) would choke on the gap.
+        setRolePermissions(role.id, withPermissionDefaults(role.id, role.permissionsJson as Partial<RolePermissions>));
       }
     }
   }

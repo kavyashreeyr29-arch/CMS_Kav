@@ -18,6 +18,7 @@ const PERMISSION_ROWS: { key: keyof RolePermissions; label: string }[] = [
   { key: 'adminAnalytics', label: 'Cross-project & time-period analytics' },
   { key: 'canReopen', label: 'Reopen a closed ticket' },
   { key: 'manageRoles', label: 'Create roles & edit permissions' },
+  { key: 'manageWorkflow', label: 'Configure workflow gates & GitHub integration' },
 ];
 
 const SCOPE_LABEL: Record<RolePermissions['scope'], string> = {

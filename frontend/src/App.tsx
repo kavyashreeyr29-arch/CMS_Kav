@@ -21,6 +21,8 @@ import { BusinessCategories } from './pages/BusinessCategories';
 import { SlaPolicies } from './pages/SlaPolicies';
 import { AiProviders } from './pages/AiProviders';
 import { WorkHours } from './pages/WorkHours';
+import { Workflow } from './pages/Workflow';
+import { GithubIntegration } from './pages/GithubIntegration';
 import { landingPathFor } from './permissions/helpers';
 
 export default function App() {
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="/business-categories" element={<BusinessCategories />} />
         <Route path="/sla-policies" element={<SlaPolicies />} />
         <Route path="/ai-providers" element={<AiProviders />} />
+        <Route path="/workflow" element={<Workflow />} />
+        <Route path="/github" element={<GithubIntegration />} />
         <Route path="/work-hours" element={<WorkHours />} />
       </Route>
       <Route

@@ -16,6 +16,8 @@ import { AttachmentUploader } from '../components/ui/AttachmentUploader';
 import { AttachmentGrid } from '../components/ui/AttachmentGrid';
 import { formatDuration } from '../components/ui/formatDuration';
 import { QaTestCasesPanel } from '../components/tickets/QaTestCasesPanel';
+import { DevelopmentPanel } from '../components/tickets/DevelopmentPanel';
+import { workflowApi, WorkflowTransitionRow } from '../api/workflow';
 import { ActivityEntry, FieldChange, Ticket } from '../types/ticket';
 
 const STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed', 'Reopened'];
@@ -44,6 +46,7 @@ export function TicketDetail() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [labels, setLabels] = useState<LabelRow[]>([]);
   const [businessCategories, setBusinessCategories] = useState<BusinessCategoryRow[]>([]);
+  const [workflow, setWorkflow] = useState<WorkflowTransitionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [comment, setComment] = useState('');
@@ -64,14 +67,20 @@ export function TicketDetail() {
   useEffect(() => { usersApi.list().then(setUsers).catch(() => {}); }, []);
   useEffect(() => { labelsApi.list().then(setLabels).catch(() => {}); }, []);
   useEffect(() => { businessCategoriesApi.list().then(setBusinessCategories).catch(() => {}); }, []);
+  useEffect(() => { workflowApi.list().then(setWorkflow).catch(() => {}); }, []);
 
   if (loading) return <div className="loading-state">Loading ticket…</div>;
   if (error || !ticket) return <div className="error-state">{error || 'Ticket not found.'}</div>;
   if (!permissions) return null;
 
+  // Source/reporter-scoped roles keep their fixed coarse set; everyone else's
+  // picker is driven by the admin-configured workflow — only valid transition
+  // targets from the current status (plus the current status itself) are
+  // offered, so the UI mirrors what the server-side gates will accept.
+  const workflowTargets = workflow.filter((t) => t.fromStatus === ticket.status).map((t) => t.toStatus);
   const statusOptions = permissions.restrictedStatuses
     ? Array.from(new Set([...RESTRICTED_STATUSES, ticket.status]))
-    : STATUSES;
+    : Array.from(new Set([ticket.status, ...workflowTargets]));
   const canReopenNow = permissions.canReopen && ['Completed', 'Closed'].includes(ticket.status);
   const myRunningEntry = ticket.timeEntries?.find((e) => e.userId === user?.id && !e.endedAt);
   // "Start date" per the user's definition is when work actually began
@@ -280,6 +289,10 @@ export function TicketDetail() {
           evidence={qaAttachments}
           onEvidenceChanged={load}
         />
+
+        {permissions.scope !== 'reporter' && (
+          <DevelopmentPanel displayId={ticket.displayId} pullRequests={ticket.pullRequests ?? []} onChanged={load} />
+        )}
 
         <div style={{ marginBottom: 18 }}>
           <div className="td-section-title"><MessageSquare size={13} />Comments ({ticket.comments?.length ?? 0})</div>

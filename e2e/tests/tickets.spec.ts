@@ -20,16 +20,22 @@ test.describe('Tickets', () => {
   });
 
   test('status change on a ticket persists after reload', async ({ page }) => {
+    // Create a fresh Open ticket so the transition is deterministic under the
+    // configurable workflow (the status picker now only offers valid targets
+    // from the current status — Open → InProgress is a default transition).
     await page.goto('/tickets');
-    await page.locator('table.data-table tbody tr').first().click();
-    await expect(page).toHaveURL(/\/tickets\/.+/);
+    await page.getByRole('button', { name: 'New ticket' }).click();
+    const title = `E2E status-persist ${Date.now()}`;
+    await page.locator('.modal .field:has(label:text-is("Title")) input').fill(title);
+    await page.locator('.modal-foot .btn-primary', { hasText: 'Create & notify' }).click();
+    await expect(page).toHaveURL(/\/tickets\/.+/, { timeout: 15000 });
 
-    const statusSelect = page.locator('.td-meta-item select').first();
-    await statusSelect.selectOption('InReview');
-    await expect(page.locator('.td-meta-item select').first()).toHaveValue('InReview');
+    const statusSelect = page.locator('#td-status');
+    await statusSelect.selectOption('InProgress');
+    await expect(page.locator('#td-status')).toHaveValue('InProgress');
 
     await page.reload();
-    await expect(page.locator('.td-meta-item select').first()).toHaveValue('InReview');
+    await expect(page.locator('#td-status')).toHaveValue('InProgress');
   });
 
   test('creating a ticket via the New ticket modal shows it in the list', async ({ page }) => {

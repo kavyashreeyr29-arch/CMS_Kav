@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, Gauge, Folder, Ticket as TicketIcon, Trello, Mail,
   BarChart3, UserCog, Tag, LucideIcon, ListTodo, Clock3, Shield, Bot, ShieldCheck, History, Users2,
+  GitBranch, Github,
 } from 'lucide-react';
 import { RolePermissions } from '../../types/permissions';
 
@@ -28,6 +29,8 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/users', label: 'Users & roles', icon: UserCog, show: (p) => p.userManagement },
   { path: '/teams', label: 'Teams', icon: Users2, show: (p) => p.userManagement },
   { path: '/roles', label: 'Roles & permissions', icon: ShieldCheck, show: (p) => p.manageRoles },
+  { path: '/workflow', label: 'Workflow', icon: GitBranch, show: (p) => p.manageWorkflow },
+  { path: '/github', label: 'GitHub integration', icon: Github, show: (p) => p.manageWorkflow },
   { path: '/audit-log', label: 'Audit log', icon: History, show: (p) => p.userManagement },
   { path: '/labels', label: 'Labels', icon: Tag, show: (p) => p.manageLabels },
   { path: '/business-categories', label: 'Business categories', icon: Tag, show: (p) => p.manageLabels },

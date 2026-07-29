@@ -37,7 +37,10 @@ export class UsersService {
 
   findAll(orgId: string) {
     return this.prisma.user.findMany({
-      where: { orgId },
+      // Exclude internal system accounts (e.g. the GitHub Automation actor,
+      // github/github.service.ts) — they exist only to satisfy activity-log
+      // actor FKs and must not appear in the Users & Roles admin list.
+      where: { orgId, email: { not: { endsWith: '@elevatohub.system' } } },
       select: USER_SELECT,
       orderBy: { name: 'asc' },
     });
