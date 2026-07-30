@@ -24,7 +24,7 @@ export function MyBoard() {
 
   if (loading) return <div className="loading-state">Loading…</div>;
 
-  const open = tickets.filter((t) => ['Open', 'Assigned', 'Reopened'].includes(t.status));
+  const open = tickets.filter((t) => ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval', 'Open', 'Assigned', 'Reopened'].includes(t.status));
   const inProgress = tickets.filter((t) => ['InProgress', 'InReview', 'QATesting'].includes(t.status));
   const closed = tickets.filter((t) => ['Completed', 'Closed'].includes(t.status));
 

@@ -5,7 +5,7 @@ import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { RolePermissions } from '../common/permissions/role-permissions';
 import { ticketVisibilityWhere } from '../common/permissions/ticket-scope';
 
-const OPEN_STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
+const OPEN_STATUSES = ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval', 'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
 const CLOSED_STATUSES = ['Completed', 'Closed'];
 
 @Injectable()

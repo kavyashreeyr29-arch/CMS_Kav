@@ -1,29 +1,45 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { TicketStatus, PrState, PrReviewState } from '@prisma/client';
+import { TicketStatus, PrState, PrReviewState, ApprovalDecision } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateWorkflowDto } from './dto/update-workflow.dto';
 
 // The default delivery workflow, seeded per-org on first read if none exists
 // (so behavior is always defined without a manual setup step). Deliberately
-// PERMISSIVE with gates OFF: it defines a sensible forward/back/close graph
-// but imposes no conditions out of the box, so the product is usable
-// immediately and no ticket type is wedged. Gates (require a merged PR, QA
-// pass, etc.) are opt-in — the admin turns them on per-transition at
-// /workflow, which is exactly the "configurable gates" the product promises.
-// The GitHub auto-transition demo (onPr*Status) and the seeded gate examples
-// in the admin UI show the capability without forcing it on every org.
+// PERMISSIVE with gates OFF for the engineering stages (Open→Closed): a
+// sensible forward/back/close graph with no conditions, so the product is
+// usable immediately and no ticket type is wedged.
+//
+// The pre-development intake pipeline (RequirementGathering → CommercialApproval
+// → RequirementApproval → ManagerApproval → Open) IS gated by default with
+// requiresApproval — that pipeline's whole purpose is sign-off, so an ungated
+// default there would defeat the point. Admins reshape any of this at /workflow.
 type GateFlags = {
   requiresAssignee: boolean;
   requiresLinkedPr: boolean;
   requiresApprovedPr: boolean;
   requiresMergedPr: boolean;
   requiresQaPass: boolean;
+  requiresApproval: boolean;
 };
 const NO_GATES: GateFlags = {
-  requiresAssignee: false, requiresLinkedPr: false, requiresApprovedPr: false, requiresMergedPr: false, requiresQaPass: false,
+  requiresAssignee: false, requiresLinkedPr: false, requiresApprovedPr: false,
+  requiresMergedPr: false, requiresQaPass: false, requiresApproval: false,
 };
 
-const DEFAULT_WORKFLOW: { from: TicketStatus; to: TicketStatus; gates?: Partial<GateFlags> }[] = [
+const DEFAULT_WORKFLOW: { from: TicketStatus; to: TicketStatus; gates?: Partial<GateFlags>; approvalLabel?: string }[] = [
+  // Intake / approval pipeline
+  { from: 'RequirementGathering', to: 'CommercialApproval', gates: { requiresApproval: true }, approvalLabel: 'Commercial Approval' },
+  { from: 'RequirementGathering', to: 'Closed' },
+  { from: 'CommercialApproval', to: 'RequirementApproval', gates: { requiresApproval: true }, approvalLabel: 'Requirement Approval' },
+  { from: 'CommercialApproval', to: 'RequirementGathering' },
+  { from: 'CommercialApproval', to: 'Closed' },
+  { from: 'RequirementApproval', to: 'ManagerApproval', gates: { requiresApproval: true }, approvalLabel: "Manager's Approval" },
+  { from: 'RequirementApproval', to: 'CommercialApproval' },
+  { from: 'RequirementApproval', to: 'Closed' },
+  { from: 'ManagerApproval', to: 'Open' },
+  { from: 'ManagerApproval', to: 'RequirementApproval' },
+  { from: 'ManagerApproval', to: 'Closed' },
+  // Engineering delivery (ungated by default)
   { from: 'Open', to: 'Assigned' },
   { from: 'Open', to: 'InProgress' },
   { from: 'Open', to: 'Closed' },
@@ -55,6 +71,11 @@ export interface GateContext {
   mergedPrCount: number;
   qaAllPassed: boolean; // true when there are test cases and none are failing/pending/blocked
   qaTestCaseCount: number;
+  // The ticket's most recent ApprovalRequest's decision, or null if none has
+  // ever been requested. Only 'approved' satisfies requiresApproval — a
+  // pending, rejected, or changes_requested latest request still blocks,
+  // which is what forces a fresh "send for approval" after a rejection.
+  latestApprovalDecision: ApprovalDecision | null;
 }
 
 @Injectable()
@@ -76,6 +97,7 @@ export class WorkflowService {
         toStatus: t.to,
         ...NO_GATES,
         ...(t.gates ?? {}),
+        approvalLabel: t.approvalLabel,
         allowedRoleIds: [],
       })),
       skipDuplicates: true,
@@ -112,6 +134,8 @@ export class WorkflowService {
           requiresApprovedPr: t.requiresApprovedPr ?? false,
           requiresMergedPr: t.requiresMergedPr ?? false,
           requiresQaPass: t.requiresQaPass ?? false,
+          requiresApproval: t.requiresApproval ?? false,
+          approvalLabel: t.approvalLabel,
           allowedRoleIds: t.allowedRoleIds ?? [],
         })),
       }),
@@ -160,14 +184,21 @@ export class WorkflowService {
         ? `Add and pass QA test cases before moving it to ${to}`
         : `All QA test cases must pass before moving it to ${to}`;
     }
+    if (transition.requiresApproval && ctx.latestApprovalDecision !== ApprovalDecision.approved) {
+      const label = transition.approvalLabel ?? 'approval';
+      return ctx.latestApprovalDecision === ApprovalDecision.pending
+        ? `Waiting on ${label} — it hasn't been decided yet`
+        : `${label} is required before moving it to ${to} — send it for approval first`;
+    }
     return null;
   }
 
-  /** Builds the gate context for a ticket from its PRs + QA test cases. */
+  /** Builds the gate context for a ticket from its PRs, QA test cases, and latest approval. */
   async gateContextFor(ticketId: string, hasAssignee: boolean): Promise<GateContext> {
-    const [prs, testCases] = await Promise.all([
+    const [prs, testCases, latestApproval] = await Promise.all([
       this.prisma.githubPullRequest.findMany({ where: { ticketId } }),
       this.prisma.ticketTestCase.findMany({ where: { ticketId }, select: { status: true } }),
+      this.prisma.approvalRequest.findFirst({ where: { ticketId }, orderBy: { createdAt: 'desc' } }),
     ]);
     const approvedPrCount = prs.filter((p) => p.reviewState === PrReviewState.approved).length;
     const mergedPrCount = prs.filter((p) => p.merged || p.state === PrState.merged).length;
@@ -179,6 +210,7 @@ export class WorkflowService {
       mergedPrCount,
       qaAllPassed,
       qaTestCaseCount: testCases.length,
+      latestApprovalDecision: latestApproval?.decision ?? null,
     };
   }
 
@@ -194,6 +226,7 @@ export class WorkflowService {
 }
 
 export const WORKFLOW_STATUSES: TicketStatus[] = [
+  TicketStatus.RequirementGathering, TicketStatus.CommercialApproval, TicketStatus.RequirementApproval, TicketStatus.ManagerApproval,
   TicketStatus.Open, TicketStatus.Assigned, TicketStatus.InProgress, TicketStatus.InReview,
   TicketStatus.QATesting, TicketStatus.Completed, TicketStatus.Closed, TicketStatus.Reopened,
 ];

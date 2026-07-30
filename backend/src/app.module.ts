@@ -28,6 +28,7 @@ import { ProjectTodosModule } from './project-todos/project-todos.module';
 import { ProjectNotesModule } from './project-notes/project-notes.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { GithubModule } from './github/github.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { GithubModule } from './github/github.module';
     ProjectNotesModule,
     WorkflowModule,
     GithubModule,
+    ApprovalsModule,
   ],
 })
 export class AppModule {}

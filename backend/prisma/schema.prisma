@@ -54,6 +54,15 @@ enum TicketType {
 }
 
 enum TicketStatus {
+  // Pre-development intake/approval pipeline — a ticket sits here before it's
+  // ready for engineering work at all. Modeled as statuses (not a separate
+  // "stage" concept) so ageing, Analytics, SLA, and the board's Status
+  // grouping all understand these stages for free, same as every other
+  // status. CHANGELOG.md "pre-dev approval pipeline".
+  RequirementGathering
+  CommercialApproval
+  RequirementApproval
+  ManagerApproval
   Open
   Assigned
   InProgress
@@ -101,6 +110,7 @@ enum NotificationType {
   project
   document
   watching
+  approval
 }
 
 enum AIProviderType {
@@ -207,6 +217,9 @@ model User {
   todoItemsAssigned ProjectTodoItem[] @relation("ProjectTodoAssignee")
   todoItemsCreated  ProjectTodoItem[] @relation("ProjectTodoCreatedBy")
   projectNotes      ProjectNote[] @relation("ProjectNoteAuthor")
+  approvalRequestsMade     ApprovalRequest[] @relation("ApprovalRequestedBy")
+  approvalRequestsToApprove ApprovalRequest[] @relation("ApprovalApprover")
+  approvalRequestsDecided  ApprovalRequest[] @relation("ApprovalDecidedBy")
 
   @@map("users")
 }
@@ -470,6 +483,7 @@ model Ticket {
   fieldChanges TicketFieldChange[]
   testCases    TicketTestCase[]
   pullRequests GithubPullRequest[]
+  approvalRequests ApprovalRequest[]
 
   @@index([projectId])
   @@index([reporterUserId])
@@ -791,6 +805,14 @@ model WorkflowTransition {
   requiresApprovedPr  Boolean      @default(false) @map("requires_approved_pr")
   requiresMergedPr    Boolean      @default(false) @map("requires_merged_pr")
   requiresQaPass      Boolean      @default(false) @map("requires_qa_pass")
+  // Requires the ticket's most recent ApprovalRequest to be 'approved' —
+  // powers the intake pipeline (Requirement/Commercial/Manager approval) but
+  // usable on any transition (e.g. a final sign-off before Closed).
+  requiresApproval    Boolean      @default(false) @map("requires_approval")
+  // Suggested label pre-filled on the "Send for approval" form when this gate
+  // is what's blocking the move (e.g. "Commercial Approval") — cosmetic only,
+  // the actual gate check doesn't match on label.
+  approvalLabel       String?      @map("approval_label")
   // Optional role restriction — empty means any role with ticket access may
   // perform the transition (subject to the gates above).
   allowedRoleIds      String[]     @map("allowed_role_ids")
@@ -869,4 +891,49 @@ model GithubPullRequest {
   @@unique([ticketId, number])
   @@index([ticketId])
   @@map("github_pull_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Generic approval requests (intake pipeline + any admin-configured gate)
+// ---------------------------------------------------------------------------
+
+enum ApprovalDecision {
+  pending
+  approved
+  rejected
+  changes_requested
+}
+
+// One row per "send for approval" action — a ticket keeps its full approval
+// history (every request + decision) for audit, not just current state.
+// Deliberately generic (a free-text label, not a fixed enum of approval
+// types) so it covers Commercial/Requirement/Manager approval today and any
+// future approval stage without a schema change — the admin wires *which*
+// transitions require one via WorkflowTransition.requiresApproval.
+model ApprovalRequest {
+  id                String           @id @default(uuid())
+  ticketId          String           @map("ticket_id")
+  label             String
+  requestedByUserId String           @map("requested_by_user_id")
+  // Either a specific person, or any user holding this role may decide —
+  // exactly one should be set (validated at the DTO/service layer, not the
+  // DB, since "exactly one of two nullable FKs" isn't expressible in Prisma).
+  approverUserId    String?          @map("approver_user_id")
+  approverRoleId    String?          @map("approver_role_id")
+  decision          ApprovalDecision @default(pending)
+  requestNote       String?          @map("request_note")
+  // What changes are needed — filled in on reject/changes_requested, the
+  // audit trail's answer to "what changes were requested".
+  decisionComment   String?          @map("decision_comment")
+  decidedByUserId   String?          @map("decided_by_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  decidedAt         DateTime?        @map("decided_at")
+
+  ticket      Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  requestedBy User   @relation("ApprovalRequestedBy", fields: [requestedByUserId], references: [id])
+  approver    User?  @relation("ApprovalApprover", fields: [approverUserId], references: [id])
+  decidedBy   User?  @relation("ApprovalDecidedBy", fields: [decidedByUserId], references: [id])
+
+  @@index([ticketId])
+  @@map("approval_requests")
 }

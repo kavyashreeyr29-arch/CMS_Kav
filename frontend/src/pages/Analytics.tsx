@@ -28,6 +28,7 @@ const STAGE_ORDER = ['Planning', 'Development', 'Testing', 'Deployed'] as const;
 type Stage = (typeof STAGE_ORDER)[number];
 const STAGE_COLOR: Record<Stage, string> = { Planning: '#7C8598', Development: '#F5A524', Testing: '#3B6CF4', Deployed: '#1DB88E' };
 const STATUS_TO_STAGE: Record<TicketStatus, Stage> = {
+  RequirementGathering: 'Planning', CommercialApproval: 'Planning', RequirementApproval: 'Planning', ManagerApproval: 'Planning',
   Open: 'Planning', Assigned: 'Planning',
   InProgress: 'Development', Reopened: 'Development',
   InReview: 'Testing', QATesting: 'Testing',

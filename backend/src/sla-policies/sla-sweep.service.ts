@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType, TicketStatus } from '@prisma/client';
 
 const OPEN_STATUSES: TicketStatus[] = [
+  TicketStatus.RequirementGathering, TicketStatus.CommercialApproval, TicketStatus.RequirementApproval, TicketStatus.ManagerApproval,
   TicketStatus.Open, TicketStatus.Assigned, TicketStatus.InProgress,
   TicketStatus.InReview, TicketStatus.QATesting, TicketStatus.Reopened,
 ];

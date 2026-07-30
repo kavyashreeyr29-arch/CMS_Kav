@@ -3,7 +3,7 @@
 Audit of ElevatoHub's software-delivery change-management capabilities, the gaps found, what
 was implemented in response, and a researched backlog of further automation/AI improvements.
 
-_Last updated: 2026-07-29 (branch `feature/workflow-github-boards`)._
+_Last updated: 2026-07-30 (branch `feature/workflow-github-boards`)._
 
 ## 1. What existed before this pass
 
@@ -44,6 +44,41 @@ _Last updated: 2026-07-29 (branch `feature/workflow-github-boards`)._
 
 ### 3.4 Tests
 `workflow-gates.spec.ts`, `github-webhook.spec.ts`, `board-grouping.spec.ts` — gate config + enforcement, HMAC signature rejection, auto-link + auto-transition, review state, and all five board groupings. Three pre-existing tests were updated for the now-deterministic transition rules.
+
+### 3.5 Pre-development approval pipeline (follow-up pass)
+Gap: the workflow above only modeled *engineering* delivery (Open→Closed) — there was no way to represent a
+ticket still waiting on commercial sign-off, requirement sign-off, or manager approval before it's even ready
+for a developer to pick up, and no generic way to *request* an approval, *decide* it, and keep an audit trail
+of who asked, who decided, and what changes were requested on rejection.
+
+- **Four new `TicketStatus` values** — `RequirementGathering` → `CommercialApproval` → `RequirementApproval` →
+  `ManagerApproval` → (existing) `Open` — modeled as statuses, not a separate concept, so ageing, Analytics,
+  SLA breach detection, and the board's Status grouping all understand the intake pipeline for free, the
+  same way they already understand every other status. They're new board columns automatically.
+- **Generic `ApprovalRequest` entity** (not a fixed type per stage) — a free-text `label`
+  ("Commercial Approval", "Requirement Approval", "Manager's Approval", or anything else an org needs), a
+  designated approver (a specific person or a role), and a `decision`
+  (`pending`/`approved`/`rejected`/`changes_requested`, mirroring the GitHub PR review states already in the
+  app) with a `decisionComment` — the audit trail's answer to "what changes were requested". A ticket keeps
+  its **full approval history**, not just current state.
+- **New `requiresApproval` workflow gate**, wired into the same `WorkflowService.evaluate()` used for
+  PRs/QA — the admin ties it to any transition (seeded by default on all three intake-pipeline hops) and it
+  blocks that move until the ticket's *most recent* approval request is `approved`. A rejection or
+  changes-requested decision re-blocks the gate until a fresh request is sent and approved.
+- **Every request/decision logs to the ticket's Activity timeline** (who requested, who decided, when, and
+  the comment) — the same persistent per-ticket audit trail every other ticket action already uses, rather
+  than a second, separate audit system.
+- **Only the designated approver can decide** — deliberately **no admin override**, unlike some of this
+  app's other "author or admin" patterns: Admin is very often the person *requesting* approval (it's the
+  default full-access account), so an override would let a requester rubber-stamp their own request and
+  defeat the entire point of segregation of duties. Caught by a test that assumed the override existed.
+- **Ticket type drives the entry point**: `Feature`/`ChangeRequest` tickets — the types that typically need
+  commercial/requirement/manager sign-off — now start in `RequirementGathering` instead of `Open`. Every
+  other type (Bug/Task/Story/Epic/Enhancement/Support) is unchanged, so this added zero risk to existing
+  behavior or tests.
+- Tests: `approval-pipeline.spec.ts` — governance-type intake status, blocked-without-approval, the full
+  send→forbidden-for-non-approver→approve→transition-unblocked cycle, reject-requires-a-comment plus the
+  "still blocked until a fresh approval" re-gate, and the UI panel/board-column coverage.
 
 ## 4. Researched backlog — further automation & AI (next passes)
 

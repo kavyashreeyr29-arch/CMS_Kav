@@ -3,6 +3,71 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-30 — Pre-development approval pipeline (Requirement/Commercial/Manager approval)
+
+User request: the delivery workflow added yesterday only covers engineering work (Open→Closed) — real
+intake has tickets still sitting under requirement gathering, commercial approval, requirement approval, and
+manager's approval before they're even ready for a developer to touch. Show those as board columns, and add
+a generic "send for approval" action with an Approve button for the designated approver, storing full audit
+logs of who requested, who approved/rejected, and what changes were requested. Continued on
+`feature/workflow-github-boards` (extends yesterday's workflow-gate engine rather than a new mechanism).
+
+### Added — four new pre-development pipeline statuses
+`RequirementGathering` → `CommercialApproval` → `RequirementApproval` → `ManagerApproval` → (existing) `Open`,
+added to `TicketStatus`. Modeled as statuses, not a separate concept, so ageing, Analytics, SLA breach
+detection, and the board's Status grouping all understand the intake pipeline for free — they show up as new
+board columns automatically. `Feature`/`ChangeRequest` tickets (the types that typically need sign-off) now
+start in `RequirementGathering` instead of `Open`; every other type is unchanged, so this is zero-risk to
+existing behavior.
+
+### Added — generic approval requests, wired into the existing workflow gates
+- New `ApprovalRequest` model — not a fixed type per stage, a free-text `label` ("Commercial Approval",
+  "Manager's Approval", or anything an org needs), a designated approver (a specific person or a role), and a
+  `decision` (`pending`/`approved`/`rejected`/`changes_requested`, mirroring the GitHub PR review states
+  already in the app) with a `decisionComment` — the audit trail's answer to "what changes were requested".
+  A ticket keeps its full approval history, not just current state.
+- New `requiresApproval` gate on `WorkflowTransition`, checked by the same `WorkflowService.evaluate()`
+  built for PRs/QA — seeded by default on all three intake-pipeline hops. Blocks the move until the ticket's
+  most recent approval request is `approved`; a rejection or changes-requested decision re-blocks the gate
+  until a fresh request is sent and approved.
+- Every request/decision logs to the ticket's Activity timeline (who requested, who decided, when, the
+  comment) — the same persistent per-ticket audit trail every other ticket action already uses.
+- New Approvals panel on the ticket detail (`ApprovalsPanel.tsx`): "Send for approval" (label + approver +
+  optional note), and Approve/Reject/Request-changes buttons for the designated approver, pre-filling the
+  label from whichever workflow gate is currently blocking the ticket.
+- `POST /approvals`, `GET /approvals?ticketId=`, `PATCH /approvals/:id/decide` — new `approvals` module.
+
+### Fixed — real bug found while testing: admin could approve their own request
+The first cut of `canDecide()` had an "or admin" override (matching this app's usual "author or admin" leeway
+pattern elsewhere). Since Admin is very often the account *requesting* approval, that override let a
+requester rubber-stamp their own request — defeating the entire point of a designated-approver gate. Removed
+the override entirely for approvals; only the specific named approver (or any user holding the designated
+approver role) can decide. Caught by `approval-pipeline.spec.ts`'s forbidden-for-non-approver test.
+
+### Fixed — status-aware logic across the app that needed the new statuses
+Every hardcoded `OPEN_STATUSES`/`STATUSES` list (Dashboard, ProjectDetail, TicketsList, MyBoard, the backend
+Analytics service, the SLA breach sweep) and the two exhaustive `Record<TicketStatus, Stage>` maps
+(Analytics, Backlog) needed the four new statuses added — a ticket sitting in the approval pipeline is very
+much "open" for ageing/dashboard/SLA purposes, and TypeScript's exhaustiveness check caught the two `Record`
+maps at compile time.
+
+### Fixed — a pre-existing test's "restore original workflow" step was silently corrupting other tests
+Surfaced by the full-suite regression run (passed in isolation, failed when run after `workflow-gates.spec.ts`):
+that spec's enforcement test edits the live workflow, then restores it from a snapshot in a `finally` block.
+Its `strip()` helper enumerated gate fields by name from *before* `requiresApproval`/`approvalLabel` existed,
+so the "restore" silently wiped those two fields back to `false`/`null` on every transition — including the
+three intake-pipeline gates this pass just added — any time that spec ran. Fixed by rewriting `strip()` to
+pass every field through except `id` (via destructuring) instead of a hardcoded field list, so the next new
+gate field needs no test update. Also re-seeded the database — its date-drift-sensitive Team Hours rows
+(`WorkHours.tsx` defaults its range to "today") had gone stale after enough real time passed since the last
+seed, unrelated to this pass's changes but caught in the same regression run.
+
+### Added — tests
+`e2e/tests/approval-pipeline.spec.ts` — governance-type intake status vs. ordinary types, blocked-without-
+approval, the full send→forbidden-for-non-approver→approve→transition-unblocked cycle, reject-requires-a-
+comment plus the "still blocked until a fresh approval" re-gate, and the ticket-panel/board-column UI
+coverage. Full regression re-run clean after these changes.
+
 ## 2026-07-29 — Configurable workflow gates, GitHub integration, multi-dimension board
 
 User request: audit the change-management system, add configurable stage gates between ticket statuses,

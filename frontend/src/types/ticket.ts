@@ -1,6 +1,11 @@
 export type TicketType = 'Story' | 'Epic' | 'Bug' | 'Feature' | 'Enhancement' | 'Task' | 'ChangeRequest' | 'Support';
 export type Priority = 'Critical' | 'High' | 'Medium' | 'Low';
-export type TicketStatus = 'Open' | 'Assigned' | 'InProgress' | 'InReview' | 'QATesting' | 'Completed' | 'Closed' | 'Reopened';
+// RequirementGathering/CommercialApproval/RequirementApproval/ManagerApproval
+// are the pre-development intake/approval pipeline (CHANGELOG.md) — a ticket
+// sits here before it's ready for engineering work at all.
+export type TicketStatus =
+  | 'RequirementGathering' | 'CommercialApproval' | 'RequirementApproval' | 'ManagerApproval'
+  | 'Open' | 'Assigned' | 'InProgress' | 'InReview' | 'QATesting' | 'Completed' | 'Closed' | 'Reopened';
 // EmailInbound added alongside the email-to-ticket intake feature
 // (CHANGELOG.md) — was missing from this union even after that backend
 // enum value shipped, since nothing in the frontend narrows against it by
@@ -88,6 +93,26 @@ export interface TestCase {
   createdAt: string;
 }
 
+export type ApprovalDecision = 'pending' | 'approved' | 'rejected' | 'changes_requested';
+
+export interface ApprovalRequest {
+  id: string;
+  ticketId: string;
+  label: string;
+  requestedByUserId: string;
+  requestedBy: UserSummary;
+  approverUserId: string | null;
+  approver: UserSummary | null;
+  approverRoleId: string | null;
+  decision: ApprovalDecision;
+  requestNote: string | null;
+  decisionComment: string | null;
+  decidedByUserId: string | null;
+  decidedBy: UserSummary | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
 export type PrState = 'open' | 'closed' | 'merged';
 export type PrReviewState = 'pending' | 'approved' | 'changes_requested';
 
@@ -157,7 +182,7 @@ export interface Ticket {
   pullRequests?: PullRequestLink[];
   totalLoggedMinutes?: number;
   hasRunningTimer?: boolean;
-  _count?: { attachments: number; comments: number; pullRequests?: number };
+  _count?: { attachments: number; comments: number; pullRequests?: number; approvalRequests?: number };
 }
 
 export interface FieldChange {

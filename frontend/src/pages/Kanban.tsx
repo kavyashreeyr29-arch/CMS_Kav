@@ -21,7 +21,13 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: 'epic', label: 'Epic' },
 ];
 
-const STATUS_COLUMNS = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed'];
+// Pre-development intake/approval pipeline columns come first, then the
+// engineering delivery columns — Closed/Reopened stay off the board (same as
+// before), reachable only from the ticket detail page.
+const STATUS_COLUMNS = [
+  'RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval',
+  'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed',
+];
 const PRIORITY_ORDER = ['Critical', 'High', 'Medium', 'Low'];
 const PRIORITY_COLOR: Record<string, string> = { Critical: '#E2483B', High: '#F5A524', Medium: '#3B6CF4', Low: '#7C8598' };
 

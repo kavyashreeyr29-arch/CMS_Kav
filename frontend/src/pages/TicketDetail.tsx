@@ -17,10 +17,10 @@ import { AttachmentGrid } from '../components/ui/AttachmentGrid';
 import { formatDuration } from '../components/ui/formatDuration';
 import { QaTestCasesPanel } from '../components/tickets/QaTestCasesPanel';
 import { DevelopmentPanel } from '../components/tickets/DevelopmentPanel';
+import { ApprovalsPanel } from '../components/tickets/ApprovalsPanel';
 import { workflowApi, WorkflowTransitionRow } from '../api/workflow';
 import { ActivityEntry, FieldChange, Ticket } from '../types/ticket';
 
-const STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed', 'Reopened'];
 const RESTRICTED_STATUSES = ['Open', 'InProgress', 'Closed'];
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
 // PRD Phase 2 §3.2 — must match backend/src/tickets/tickets.service.ts EDITABLE_STATUSES.
@@ -81,6 +81,9 @@ export function TicketDetail() {
   const statusOptions = permissions.restrictedStatuses
     ? Array.from(new Set([...RESTRICTED_STATUSES, ticket.status]))
     : Array.from(new Set([ticket.status, ...workflowTargets]));
+  // The transition (if any) currently blocking on a requiresApproval gate —
+  // its suggested label pre-fills the Approvals panel's "Send for approval" form.
+  const approvalGateTransition = workflow.find((t) => t.fromStatus === ticket.status && t.requiresApproval);
   const canReopenNow = permissions.canReopen && ['Completed', 'Closed'].includes(ticket.status);
   const myRunningEntry = ticket.timeEntries?.find((e) => e.userId === user?.id && !e.endedAt);
   // "Start date" per the user's definition is when work actually began
@@ -292,6 +295,10 @@ export function TicketDetail() {
 
         {permissions.scope !== 'reporter' && (
           <DevelopmentPanel displayId={ticket.displayId} pullRequests={ticket.pullRequests ?? []} onChanged={load} />
+        )}
+
+        {permissions.scope !== 'reporter' && (
+          <ApprovalsPanel ticketId={id!} users={users} suggestedLabel={approvalGateTransition?.approvalLabel ?? undefined} />
         )}
 
         <div style={{ marginBottom: 18 }}>

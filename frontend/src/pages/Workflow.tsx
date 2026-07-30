@@ -4,13 +4,14 @@ import { workflowApi, WorkflowTransitionRow, WorkflowTransitionInput, WORKFLOW_S
 import { formatStatus } from '../components/ui/Chips';
 import { TicketStatus } from '../types/ticket';
 
-type GateKey = 'requiresAssignee' | 'requiresLinkedPr' | 'requiresApprovedPr' | 'requiresMergedPr' | 'requiresQaPass';
+type GateKey = 'requiresAssignee' | 'requiresLinkedPr' | 'requiresApprovedPr' | 'requiresMergedPr' | 'requiresQaPass' | 'requiresApproval';
 const GATES: { key: GateKey; label: string; hint: string }[] = [
   { key: 'requiresAssignee', label: 'Assignee', hint: 'Ticket must have an assignee' },
   { key: 'requiresLinkedPr', label: 'Linked PR', hint: 'At least one pull request linked' },
   { key: 'requiresApprovedPr', label: 'Approved PR', hint: 'A linked PR must be approved' },
   { key: 'requiresMergedPr', label: 'Merged PR', hint: 'A linked PR must be merged' },
   { key: 'requiresQaPass', label: 'QA pass', hint: 'All QA test cases must pass' },
+  { key: 'requiresApproval', label: 'Approval', hint: "Someone must approve via the ticket's Approvals panel — see the label field once checked" },
 ];
 
 type EditableRow = WorkflowTransitionInput & { _key: string };
@@ -41,6 +42,11 @@ export function Workflow() {
     setSaved(false);
   }
 
+  function setApprovalLabel(key: string, label: string) {
+    setRows((rs) => rs.map((r) => (r._key === key ? { ...r, approvalLabel: label } : r)));
+    setSaved(false);
+  }
+
   function removeRow(key: string) {
     setRows((rs) => rs.filter((r) => r._key !== key));
     setSaved(false);
@@ -53,7 +59,7 @@ export function Workflow() {
     setError('');
     setRows((rs) => [
       ...rs,
-      { _key: key, fromStatus: addFrom, toStatus: addTo, requiresAssignee: false, requiresLinkedPr: false, requiresApprovedPr: false, requiresMergedPr: false, requiresQaPass: false, allowedRoleIds: [] },
+      { _key: key, fromStatus: addFrom, toStatus: addTo, requiresAssignee: false, requiresLinkedPr: false, requiresApprovedPr: false, requiresMergedPr: false, requiresQaPass: false, requiresApproval: false, approvalLabel: null, allowedRoleIds: [] },
     ]);
     setSaved(false);
   }
@@ -120,6 +126,15 @@ export function Workflow() {
                       onChange={() => toggleGate(r._key, g.key)}
                       aria-label={`${formatStatus(r.fromStatus)} to ${formatStatus(r.toStatus)}: require ${g.label}`}
                     />
+                    {g.key === 'requiresApproval' && r.requiresApproval && (
+                      <input
+                        value={r.approvalLabel ?? ''}
+                        onChange={(e) => setApprovalLabel(r._key, e.target.value)}
+                        placeholder="Approval label"
+                        aria-label={`${formatStatus(r.fromStatus)} to ${formatStatus(r.toStatus)}: approval label`}
+                        style={{ display: 'block', marginTop: 6, width: 110, fontSize: 10.5, padding: '3px 6px' }}
+                      />
+                    )}
                   </td>
                 ))}
                 <td style={{ textAlign: 'right' }}>

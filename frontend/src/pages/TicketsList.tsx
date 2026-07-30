@@ -11,10 +11,13 @@ import { exportToCsv } from '../components/ui/exportCsv';
 import { Ticket } from '../types/ticket';
 import { ProjectFilterContext } from '../components/layout/AppShell';
 
-const STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed', 'Reopened'];
+const STATUSES = [
+  'RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval',
+  'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed', 'Reopened',
+];
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
 const SOURCES = ['InternalPM', 'CallCenter', 'CustomerSuccess', 'Operations', 'ClientPortal', 'Sales'];
-const OPEN_STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
+const OPEN_STATUSES = ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval', 'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
 
 function daysSince(iso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86400000));

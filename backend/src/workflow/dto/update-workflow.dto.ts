@@ -30,6 +30,14 @@ export class WorkflowTransitionDto {
   requiresQaPass?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  requiresApproval?: boolean;
+
+  @IsOptional()
+  @IsString()
+  approvalLabel?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   allowedRoleIds?: string[];

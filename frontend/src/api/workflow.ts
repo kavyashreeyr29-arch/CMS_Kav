@@ -10,12 +10,15 @@ export interface WorkflowTransitionRow {
   requiresApprovedPr: boolean;
   requiresMergedPr: boolean;
   requiresQaPass: boolean;
+  requiresApproval: boolean;
+  approvalLabel: string | null;
   allowedRoleIds: string[];
 }
 
 export type WorkflowTransitionInput = Omit<WorkflowTransitionRow, 'id'>;
 
 export const WORKFLOW_STATUSES: TicketStatus[] = [
+  'RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval',
   'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed', 'Reopened',
 ];
 

@@ -21,7 +21,7 @@ import { ActivityEntry, Ticket } from '../types/ticket';
 import { Project } from '../types/project';
 import { ProjectFilterContext } from '../components/layout/AppShell';
 
-const OPEN_STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
+const OPEN_STATUSES = ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval', 'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
 const AGING_BUCKETS = ['0-2d', '3-5d', '6-10d', '11-20d', '21d+'];
 const AGING_COLORS = ['var(--aging-0)', 'var(--aging-1)', 'var(--aging-2)', 'var(--aging-3)', 'var(--aging-4)'];

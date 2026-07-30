@@ -22,13 +22,14 @@ async function getWorkflow(request: APIRequestContext, token: string) {
 async function putWorkflow(request: APIRequestContext, token: string, transitions: unknown[]) {
   return request.put(`${API_BASE}/workflow`, { headers: auth(token), data: { transitions } });
 }
-type Row = { fromStatus: string; toStatus: string; requiresAssignee: boolean; requiresLinkedPr: boolean; requiresApprovedPr: boolean; requiresMergedPr: boolean; requiresQaPass: boolean; allowedRoleIds: string[] };
-function strip(rows: Row[]): Row[] {
-  return rows.map((r) => ({
-    fromStatus: r.fromStatus, toStatus: r.toStatus, requiresAssignee: r.requiresAssignee,
-    requiresLinkedPr: r.requiresLinkedPr, requiresApprovedPr: r.requiresApprovedPr,
-    requiresMergedPr: r.requiresMergedPr, requiresQaPass: r.requiresQaPass, allowedRoleIds: r.allowedRoleIds,
-  }));
+// Strips just `id` (the one field PUT /workflow doesn't accept back) rather
+// than enumerating every gate field by name — a hardcoded field list here
+// silently dropped `requiresApproval`/`approvalLabel` when that gate was
+// added later, so this test's own "restore the original workflow" step in
+// the `finally` block quietly wiped a gate it didn't know about. Passing
+// every field through except `id` means a future gate needs no test update.
+function strip<T extends { id: string }>(rows: T[]): Omit<T, 'id'>[] {
+  return rows.map(({ id: _id, ...rest }) => rest);
 }
 
 test.describe('Workflow gates — admin config', () => {

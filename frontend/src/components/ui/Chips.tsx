@@ -43,10 +43,13 @@ export function LabelChip({ l }: { l: string }) {
   );
 }
 
+const INTAKE_STATUSES = ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval'];
+
 export function StatusDot({ status }: { status: string }) {
   const color =
     status === 'Closed' || status === 'Completed' ? '#1DB88E' :
     status === 'Reopened' ? '#E2483B' :
+    INTAKE_STATUSES.includes(status) ? '#8250DF' :
     status === 'InReview' || status === 'QATesting' ? '#3B6CF4' :
     status === 'InProgress' ? '#F5A524' : PRIORITY_COLOR.Low;
   return <Circle size={8} fill={color} color={color} />;

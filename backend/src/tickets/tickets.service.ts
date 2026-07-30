@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { NotificationType, Prisma, TicketStatus } from '@prisma/client';
+import { NotificationType, Prisma, TicketStatus, TicketType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -54,7 +54,7 @@ const TICKET_INCLUDE = {
   // parent + PR count power the board's Epic swimlanes and the "N PRs linked"
   // card badge without pulling every PR row on a 200-ticket list.
   parent: { select: { id: true, displayId: true, title: true } },
-  _count: { select: { attachments: true, comments: true, pullRequests: true } },
+  _count: { select: { attachments: true, comments: true, pullRequests: true, approvalRequests: true } },
 } satisfies Prisma.TicketInclude;
 
 /** Activity-log text only — the ticket-list/detail UI has its own formatter. */
@@ -186,7 +186,7 @@ export class TicketsService {
         description: dto.description,
         type: dto.type,
         priority: dto.priority,
-        status: TicketStatus.Open,
+        status: this.initialStatusFor(dto.type),
         source: dto.source,
         businessCategory: dto.businessCategory,
         labelId: dto.labelId,
@@ -674,6 +674,15 @@ export class TicketsService {
   private isAllowedRestrictedStatus(status: TicketStatus): boolean {
     const allowed: TicketStatus[] = [TicketStatus.Open, TicketStatus.InProgress, TicketStatus.Closed];
     return allowed.includes(status);
+  }
+
+  // Feature/ChangeRequest tickets typically need commercial/requirement/
+  // manager sign-off before engineering starts — they enter the intake
+  // pipeline. Every other type (Bug/Task/Story/Epic/Enhancement/Support)
+  // goes straight to Open, unchanged from before the pipeline existed.
+  private initialStatusFor(type: TicketType): TicketStatus {
+    const GOVERNANCE_TYPES: TicketType[] = [TicketType.ChangeRequest, TicketType.Feature];
+    return GOVERNANCE_TYPES.includes(type) ? TicketStatus.RequirementGathering : TicketStatus.Open;
   }
 
   private async notifyMentions(ticketId: string, text: string, source: string, actorId: string) {

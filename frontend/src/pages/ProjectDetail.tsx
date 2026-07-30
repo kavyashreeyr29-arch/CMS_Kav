@@ -17,7 +17,7 @@ import { ProjectRewardsTab } from '../components/projects/ProjectRewardsTab';
 import { ProjectCommunicationTab } from '../components/projects/ProjectCommunicationTab';
 import { ProjectTodoTab } from '../components/projects/ProjectTodoTab';
 
-const OPEN_STATUSES = ['Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
+const OPEN_STATUSES = ['RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval', 'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Reopened'];
 
 // Basecamp-style "folders" — Tickets isn't a persistent tab (see
 // jumpToTickets below), it navigates straight to the real Tickets page
