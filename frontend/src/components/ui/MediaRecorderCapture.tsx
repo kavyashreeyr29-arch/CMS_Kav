@@ -2,6 +2,32 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, Video, Square, Trash2, Paperclip } from 'lucide-react';
 import { uploadFile, UploadedFileMeta } from '../../api/uploadFile';
 
+// AudioContext-driven level meter so an audio-only recording has *some*
+// visible motion (not just a static timer) — same "am I actually being
+// heard" reassurance a live camera preview gives for video.
+function useAudioLevel(stream: MediaStream | null): number {
+  const [level, setLevel] = useState(0);
+  useEffect(() => {
+    if (!stream) { setLevel(0); return; }
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    let raf: number;
+    const tick = () => {
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((s, v) => s + v, 0) / data.length;
+      setLevel(Math.min(1, avg / 100));
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { cancelAnimationFrame(raf); source.disconnect(); ctx.close(); };
+  }, [stream]);
+  return level;
+}
+
 interface Props {
   kind: 'audio' | 'video';
   requestUploadUrl: (fileName: string) => Promise<{ uploadUrl: string; storageKey: string }>;
@@ -27,6 +53,12 @@ export function MediaRecorderCapture({ kind, requestUploadUrl, onUploaded }: Pro
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  // Live MediaStream while recording — not just a ref — so the live <video>
+  // preview and the audio level meter can both bind to it. Without a live
+  // preview during recording (only the recorded clip afterward), a user has
+  // no way to tell recording is actually happening.
+  const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
+  const audioLevel = useAudioLevel(kind === 'audio' ? liveStream : null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -34,6 +66,11 @@ export function MediaRecorderCapture({ kind, requestUploadUrl, onUploaded }: Pro
   const blobRef = useRef<Blob | null>(null);
   const startedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (liveVideoRef.current) liveVideoRef.current.srcObject = liveStream;
+  }, [liveStream]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -49,6 +86,7 @@ export function MediaRecorderCapture({ kind, requestUploadUrl, onUploaded }: Pro
         kind === 'video' ? { audio: true, video: true } : { audio: true },
       );
       streamRef.current = stream;
+      setLiveStream(stream);
       chunksRef.current = [];
       const recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -58,6 +96,7 @@ export function MediaRecorderCapture({ kind, requestUploadUrl, onUploaded }: Pro
         setPreviewUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+        setLiveStream(null);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -125,16 +164,36 @@ export function MediaRecorderCapture({ kind, requestUploadUrl, onUploaded }: Pro
     );
   }
 
+  // While recording: an unmistakable live view — the actual camera feed for
+  // video, a moving level meter for audio — plus a pulsing "REC" badge.
+  // Before this, the only signal was the pill's background color, which a
+  // user reasonably reported as "how do I know it's actually recording?"
+  if (recording) {
+    return (
+      <div className="recorder-live">
+        <div className="recorder-rec-badge"><span className="recorder-rec-dot" />REC {formatElapsed(elapsedMs)}</div>
+        {kind === 'video' ? (
+          <video ref={liveVideoRef} autoPlay muted playsInline className="recorder-live-video" />
+        ) : (
+          <div className="recorder-level-meter" aria-hidden="true">
+            {Array.from({ length: 24 }).map((_, i) => {
+              const barThreshold = i / 24;
+              const active = audioLevel > barThreshold;
+              return <span key={i} className={`recorder-level-bar ${active ? 'active' : ''}`} />;
+            })}
+          </div>
+        )}
+        <button type="button" className="btn-destructive" onClick={stop} style={{ marginTop: 8 }}>
+          <Square size={12} />Stop recording
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <button
-        type="button"
-        className={`select-pill ${recording ? 'recording' : ''}`}
-        onClick={recording ? stop : start}
-        aria-pressed={recording}
-      >
-        {recording ? <Square size={13} /> : <Icon size={13} />}
-        {recording ? `Stop (${formatElapsed(elapsedMs)})` : `Record ${label}`}
+      <button type="button" className="select-pill" onClick={start}>
+        <Icon size={13} />Record {label}
       </button>
       {error && <div className="field-error" style={{ marginTop: 6 }}>{error}</div>}
     </div>

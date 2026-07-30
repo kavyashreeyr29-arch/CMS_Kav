@@ -3,8 +3,9 @@ import { Plus, X } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { usersApi, UserRow } from '../../api/users';
 import { ApiError } from '../../api/client';
+import { PROJECT_STATUSES } from '../../types/project';
+import { formatStatus } from '../ui/Chips';
 
-const STATUSES = ['Planning', 'Active', 'OnHold', 'Completed'];
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
 
 interface Props {
@@ -98,7 +99,7 @@ export function CreateProjectModal({ onClose, onCreated }: Props) {
             <div className="field">
               <label htmlFor="cp-status">Status</label>
               <select id="cp-status" value={form.status} onChange={(e) => set('status', e.target.value)}>
-                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{formatStatus(s)}</option>)}
               </select>
             </div>
             <div className="field">

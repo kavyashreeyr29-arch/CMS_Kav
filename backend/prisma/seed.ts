@@ -51,12 +51,15 @@ const PEOPLE: { name: string; roleId: string; seniority?: string }[] = [
 // GET /reports/work-hours 500'd on an empty IN() clause; see CHANGELOG).
 const TEAM = { name: 'Delivery Squad', lead: 'V. Kapoor', members: ['V. Kapoor', 'P. Sharma', 'J. Ortiz', 'F. Haddad'] };
 
+// One project per SDLC phase (bar RequirementAnalysis/OnHold, covered by
+// the docs/notes narrative below instead) so the demo shows every stage
+// somewhere rather than everything sitting in one default status.
 const PROJECTS = [
-  { code: 'ATLAS', name: 'Atlas — Core Platform', client: 'Internal', priority: Priority.High, pm: 'S. Iyer', team: TEAM.name },
-  { code: 'ORION', name: 'Orion — Mobile Banking', client: 'Meridian Bank', priority: Priority.Critical, pm: 'A. Fernandes' },
-  { code: 'NOVA', name: 'Nova — Client Portal', client: 'Kestrel Retail', priority: Priority.Medium, pm: 'S. Iyer' },
-  { code: 'HELIX', name: 'Helix — Data Platform', client: 'Internal', priority: Priority.High, pm: 'A. Fernandes' },
-  { code: 'ZEN', name: 'Zen — Support Desk', client: 'Vantage Health', priority: Priority.Medium, pm: 'S. Iyer' },
+  { code: 'ATLAS', name: 'Atlas — Core Platform', client: 'Internal', priority: Priority.High, pm: 'S. Iyer', team: TEAM.name, status: ProjectStatus.Implementation },
+  { code: 'ORION', name: 'Orion — Mobile Banking', client: 'Meridian Bank', priority: Priority.Critical, pm: 'A. Fernandes', status: ProjectStatus.Testing },
+  { code: 'NOVA', name: 'Nova — Client Portal', client: 'Kestrel Retail', priority: Priority.Medium, pm: 'S. Iyer', status: ProjectStatus.Design },
+  { code: 'HELIX', name: 'Helix — Data Platform', client: 'Internal', priority: Priority.High, pm: 'A. Fernandes', status: ProjectStatus.Deployment },
+  { code: 'ZEN', name: 'Zen — Support Desk', client: 'Vantage Health', priority: Priority.Medium, pm: 'S. Iyer', status: ProjectStatus.Maintenance },
 ];
 
 const LABELS = [
@@ -224,14 +227,14 @@ async function main() {
   for (const proj of PROJECTS) {
     const project = await prisma.project.upsert({
       where: { code: proj.code },
-      update: { teamId: proj.team ? team.id : null },
+      update: { teamId: proj.team ? team.id : null, status: proj.status },
       create: {
         code: proj.code,
         name: proj.name,
         client: proj.client,
         pmUserId: userByName.get(proj.pm)!,
         teamId: proj.team ? team.id : null,
-        status: ProjectStatus.Active,
+        status: proj.status,
         priority: proj.priority,
         startDate: new Date('2026-02-01'),
         endDate: new Date('2026-09-30'),
@@ -368,6 +371,185 @@ async function main() {
       });
       seededTicketIds.push({ projectCode: proj.code, id: ticket.id, status: ticket.status });
     }
+  }
+
+  // Pre-development approval pipeline demo data (CHANGELOG.md) — a handful
+  // of governance-type (ChangeRequest/Feature) tickets sitting at each
+  // intake stage, most carrying real ApprovalRequest history (approved,
+  // pending, rejected, and changes-requested examples), so the feature shows
+  // real state the first time someone looks at it instead of an empty board
+  // column and an empty Approvals panel.
+  await prisma.approvalRequest.deleteMany({
+    where: { ticket: { project: { code: { in: PROJECTS.map((p) => p.code) } } } },
+  });
+  await prisma.ticket.deleteMany({
+    where: { project: { code: { in: PROJECTS.map((p) => p.code) } }, type: { in: [TicketType.ChangeRequest, TicketType.Feature] } },
+  });
+
+  interface GovernanceApprovalCfg {
+    label: string;
+    requestedBy: string;
+    approver: string;
+    decision: 'pending' | 'approved' | 'rejected' | 'changes_requested';
+    note?: string;
+    comment?: string;
+    requestedDaysAgo: number;
+    decidedDaysAgo?: number;
+  }
+  interface GovernanceTicketCfg {
+    projectCode: string;
+    title: string;
+    type: TicketType;
+    status: TicketStatus;
+    reporter: string;
+    createdDaysAgo: number;
+    approvals: GovernanceApprovalCfg[];
+  }
+
+  const GOVERNANCE_TICKETS: GovernanceTicketCfg[] = [
+    {
+      projectCode: 'ATLAS', title: 'Add SSO login for enterprise clients', type: TicketType.Feature,
+      status: TicketStatus.RequirementGathering, reporter: 'S. Iyer', createdDaysAgo: 2, approvals: [],
+    },
+    {
+      projectCode: 'ATLAS', title: 'Integrate new payment gateway', type: TicketType.ChangeRequest,
+      status: TicketStatus.CommercialApproval, reporter: 'S. Iyer', createdDaysAgo: 5,
+      approvals: [
+        { label: 'Commercial Approval', requestedBy: 'S. Iyer', approver: 'N. Rao', decision: 'approved', note: 'Vendor quote attached — needs sign-off before we scope it.', requestedDaysAgo: 4, decidedDaysAgo: 3 },
+      ],
+    },
+    {
+      projectCode: 'ORION', title: 'Launch new rewards tier for premium customers', type: TicketType.Feature,
+      status: TicketStatus.RequirementApproval, reporter: 'A. Fernandes', createdDaysAgo: 8,
+      approvals: [
+        { label: 'Commercial Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'approved', requestedDaysAgo: 7, decidedDaysAgo: 6 },
+        { label: 'Requirement Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'pending', note: 'Please confirm scope covers both iOS and Android.', requestedDaysAgo: 1 },
+      ],
+    },
+    {
+      projectCode: 'HELIX', title: 'Migrate reporting pipeline to new data warehouse', type: TicketType.ChangeRequest,
+      status: TicketStatus.ManagerApproval, reporter: 'A. Fernandes', createdDaysAgo: 12,
+      approvals: [
+        { label: 'Commercial Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'approved', requestedDaysAgo: 10, decidedDaysAgo: 9 },
+        { label: 'Requirement Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'approved', requestedDaysAgo: 7, decidedDaysAgo: 6 },
+        { label: "Manager's Approval", requestedBy: 'A. Fernandes', approver: 'P. Manager', decision: 'pending', requestedDaysAgo: 2 },
+      ],
+    },
+    {
+      projectCode: 'ZEN', title: 'Expand support desk to cover EU business hours', type: TicketType.ChangeRequest,
+      status: TicketStatus.CommercialApproval, reporter: 'S. Iyer', createdDaysAgo: 6,
+      approvals: [
+        { label: 'Commercial Approval', requestedBy: 'S. Iyer', approver: 'N. Rao', decision: 'changes_requested', comment: "Budget doesn't account for after-hours on-call pay — please revise and resend.", requestedDaysAgo: 3, decidedDaysAgo: 2 },
+      ],
+    },
+    {
+      projectCode: 'NOVA', title: 'Add self-serve invoice download for clients', type: TicketType.Feature,
+      status: TicketStatus.RequirementGathering, reporter: 'S. Iyer', createdDaysAgo: 15,
+      approvals: [
+        { label: 'Commercial Approval', requestedBy: 'S. Iyer', approver: 'N. Rao', decision: 'rejected', comment: "Not a priority this quarter — revisit after the portal redesign ships.", requestedDaysAgo: 12, decidedDaysAgo: 11 },
+      ],
+    },
+  ];
+
+  for (const cfg of GOVERNANCE_TICKETS) {
+    const project = await prisma.project.findUnique({ where: { code: cfg.projectCode } });
+    if (!project) continue;
+    const seq = await prisma.project.update({ where: { id: project.id }, data: { ticketSeq: { increment: 1 } } });
+    const ticket = await prisma.ticket.create({
+      data: {
+        displayId: `${cfg.projectCode}-${seq.ticketSeq}`,
+        projectId: project.id,
+        title: cfg.title,
+        description: 'Seeded demo governance ticket — see the Approvals panel for its sign-off history.',
+        type: cfg.type,
+        priority: Priority.High,
+        status: cfg.status,
+        source: TicketSource.InternalPM,
+        businessCategory: BUSINESS_CATEGORY_CYCLE[0],
+        reporterUserId: userByName.get(cfg.reporter)!,
+        createdAt: daysAgo(cfg.createdDaysAgo),
+        updatedAt: daysAgo(cfg.approvals[0]?.decidedDaysAgo ?? cfg.createdDaysAgo),
+      },
+    });
+    for (const a of cfg.approvals) {
+      await prisma.approvalRequest.create({
+        data: {
+          ticketId: ticket.id,
+          label: a.label,
+          requestedByUserId: userByName.get(a.requestedBy)!,
+          approverUserId: userByName.get(a.approver)!,
+          decision: a.decision,
+          requestNote: a.note,
+          decisionComment: a.comment,
+          decidedByUserId: a.decision === 'pending' ? null : userByName.get(a.approver)!,
+          createdAt: daysAgo(a.requestedDaysAgo),
+          decidedAt: a.decidedDaysAgo !== undefined ? daysAgo(a.decidedDaysAgo) : null,
+        },
+      });
+    }
+  }
+
+  // Campaigns/Rewards/Communication/To-do demo data (CHANGELOG.md
+  // "Basecamp-style project folders") — enough on a couple of projects to
+  // show each tab populated rather than every project's folders empty.
+  const atlasProject = await prisma.project.findUnique({ where: { code: 'ATLAS' } });
+  const orionProject = await prisma.project.findUnique({ where: { code: 'ORION' } });
+  const zenProject = await prisma.project.findUnique({ where: { code: 'ZEN' } });
+
+  await prisma.campaign.deleteMany({ where: { project: { code: { in: PROJECTS.map((p) => p.code) } } } });
+  await prisma.reward.deleteMany({ where: { project: { code: { in: PROJECTS.map((p) => p.code) } } } });
+  await prisma.projectNote.deleteMany({ where: { project: { code: { in: PROJECTS.map((p) => p.code) } } } });
+  await prisma.projectTodoItem.deleteMany({ where: { project: { code: { in: PROJECTS.map((p) => p.code) } } } });
+
+  if (atlasProject) {
+    const campaign = await prisma.campaign.create({
+      data: {
+        projectId: atlasProject.id,
+        name: 'Q3 Enterprise Upsell Push',
+        description: 'Bundled SSO + payment-gateway work into one pitch for existing enterprise accounts.',
+        status: 'Active',
+        startDate: daysAgo(20),
+        endDate: new Date(Date.now() + 40 * 24 * 60 * 60 * 1000),
+        createdByUserId: userByName.get('S. Iyer')!,
+      },
+    });
+    const linkable = await prisma.ticket.findFirst({ where: { projectId: atlasProject.id, title: 'Integrate new payment gateway' } });
+    if (linkable) await prisma.ticket.update({ where: { id: linkable.id }, data: { campaignId: campaign.id } });
+
+    await prisma.projectNote.createMany({
+      data: [
+        { projectId: atlasProject.id, authorUserId: userByName.get('S. Iyer')!, body: 'Kickoff call with the enterprise sales team went well — they want SSO prioritized ahead of the payment gateway work.', createdAt: daysAgo(6) },
+        { projectId: atlasProject.id, authorUserId: userByName.get('P. Sharma')!, body: 'Heads up — the payment gateway vendor sandbox is down intermittently this week, may slip our estimate.', createdAt: daysAgo(2) },
+      ],
+    });
+    await prisma.projectTodoItem.createMany({
+      data: [
+        { projectId: atlasProject.id, title: 'Confirm SSO provider (Okta vs Azure AD) with enterprise sales', assigneeUserId: userByName.get('S. Iyer'), createdByUserId: userByName.get('S. Iyer')!, dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000) },
+        { projectId: atlasProject.id, title: 'Draft the commercial approval request for the payment gateway vendor', done: true, assigneeUserId: userByName.get('S. Iyer'), createdByUserId: userByName.get('S. Iyer')!, completedAt: daysAgo(4) },
+      ],
+    });
+  }
+
+  if (orionProject) {
+    await prisma.reward.create({
+      data: {
+        projectId: orionProject.id,
+        name: 'Premium Tier Cashback Bonus',
+        description: '2x points multiplier for the first 90 days after upgrading to the premium tier.',
+        rewardType: 'Points multiplier',
+        value: 2.0,
+        createdByUserId: userByName.get('A. Fernandes')!,
+      },
+    });
+    await prisma.projectNote.create({
+      data: { projectId: orionProject.id, authorUserId: userByName.get('A. Fernandes')!, body: 'Meridian Bank confirmed the rewards tier is their top ask for this quarter — treating it as our lead priority once requirement sign-off lands.', createdAt: daysAgo(3) },
+    });
+  }
+
+  if (zenProject) {
+    await prisma.projectTodoItem.create({
+      data: { projectId: zenProject.id, title: 'Get quotes from two staffing agencies for EU after-hours coverage', assigneeUserId: userByName.get('S. Iyer'), createdByUserId: userByName.get('S. Iyer')! },
+    });
   }
 
   // prd.md §9 — SLA policies page was entirely empty on a fresh seed (no

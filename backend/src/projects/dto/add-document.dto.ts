@@ -18,7 +18,7 @@ export class AddDocumentDto {
   // Which Basecamp-style folder this file was uploaded from — omitted/absent
   // means the main Docs & Files list.
   @IsOptional()
-  @IsIn(['campaign', 'communication', 'reward', 'todo'])
+  @IsIn(['campaign', 'communication', 'reward', 'todo', 'commercial'])
   section?: string;
 
   @IsOptional()

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import {
-  Folder, Gauge, Megaphone, MessageSquare, Gift, ListChecks, Ticket as TicketIcon, Users as UsersIcon, X,
+  Folder, Gauge, Megaphone, MessageSquare, Gift, ListChecks, Ticket as TicketIcon, Users as UsersIcon, X, Edit3,
 } from 'lucide-react';
 import { projectsApi } from '../api/projects';
 import { ticketsApi } from '../api/tickets';
 import { usersApi, UserRow } from '../api/users';
+import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { PrioChip, PRIORITY_COLOR } from '../components/ui/Chips';
-import { Project } from '../types/project';
+import { PrioChip, PRIORITY_COLOR, formatStatus } from '../components/ui/Chips';
+import { Project, PROJECT_STATUSES } from '../types/project';
 import { Ticket } from '../types/ticket';
 import { ProjectFilterContext } from '../components/layout/AppShell';
 import { ProjectDocsTab } from '../components/projects/ProjectDocsTab';
@@ -36,7 +37,7 @@ const TABS: { id: TabId; label: string; icon: typeof Folder }[] = [
 export function ProjectDetail() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const { setProjectFilter } = useOutletContext<ProjectFilterContext>();
   const [project, setProject] = useState<Project | null>(null);
   const [allTickets, setAllTickets] = useState<Ticket[]>([]);
@@ -44,6 +45,13 @@ export function ProjectDetail() {
   const [memberToAdd, setMemberToAdd] = useState('');
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>('overview');
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    name: string; client: string; pmUserId: string; status: string; priority: string;
+    startDate: string; endDate: string; description: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   function load() {
     if (!code) return;
@@ -103,6 +111,36 @@ export function ProjectDetail() {
     load();
   }
 
+  function startEdit() {
+    setEditForm({
+      name: project!.name,
+      client: project!.client,
+      pmUserId: project!.pmUserId,
+      status: project!.status,
+      priority: project!.priority,
+      startDate: project!.startDate.slice(0, 10),
+      endDate: project!.endDate.slice(0, 10),
+      description: project!.description ?? '',
+    });
+    setSaveError('');
+    setEditMode(true);
+  }
+
+  async function saveEdit() {
+    if (!editForm) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await projectsApi.update(project!.code, editForm);
+      setEditMode(false);
+      load();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : 'Could not save changes.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="panel" style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -111,6 +149,9 @@ export function ProjectDetail() {
           <div className="modal-title">{project.name}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {permissions?.createProject && tab === 'overview' && !editMode && (
+            <button className="btn-ghost" onClick={startEdit}><Edit3 size={13} style={{ marginRight: 5 }} />Edit</button>
+          )}
           <button className="btn-ghost" onClick={viewInDashboard}><Gauge size={13} style={{ marginRight: 5 }} />View in dashboard</button>
           <button className="modal-close" onClick={() => navigate('/projects')} aria-label="Close"><X size={15} /></button>
         </div>
@@ -127,12 +168,62 @@ export function ProjectDetail() {
         </div>
       </div>
 
-      {tab === 'overview' && (
+      {tab === 'overview' && editMode && editForm && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="field full">
+            <label htmlFor="pe-name">Project name</label>
+            <input id="pe-name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f!, name: e.target.value }))} />
+          </div>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="pe-client">Client</label>
+              <input id="pe-client" value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f!, client: e.target.value }))} />
+            </div>
+            <div className="field">
+              <label htmlFor="pe-pm">Project manager</label>
+              <select id="pe-pm" value={editForm.pmUserId} onChange={(e) => setEditForm((f) => ({ ...f!, pmUserId: e.target.value }))}>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="pe-status">Stage (SDLC)</label>
+              <select id="pe-status" value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f!, status: e.target.value }))}>
+                {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{formatStatus(s)}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="pe-priority">Priority</label>
+              <select id="pe-priority" value={editForm.priority} onChange={(e) => setEditForm((f) => ({ ...f!, priority: e.target.value }))}>
+                {['Critical', 'High', 'Medium', 'Low'].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="pe-start">Start date</label>
+              <input id="pe-start" type="date" value={editForm.startDate} onChange={(e) => setEditForm((f) => ({ ...f!, startDate: e.target.value }))} />
+            </div>
+            <div className="field">
+              <label htmlFor="pe-end">End date</label>
+              <input id="pe-end" type="date" value={editForm.endDate} onChange={(e) => setEditForm((f) => ({ ...f!, endDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="field full">
+            <label htmlFor="pe-desc">Description</label>
+            <textarea id="pe-desc" rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f!, description: e.target.value }))} />
+          </div>
+          {saveError && <div className="field-error" style={{ marginBottom: 10 }}>{saveError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-primary" onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+            <button className="btn-ghost" onClick={() => setEditMode(false)} disabled={saving}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'overview' && !editMode && (
         <>
           <div className="td-meta-grid">
             <div className="td-meta-item"><div className="td-meta-label">Client</div><div className="td-meta-value">{project.client}</div></div>
             <div className="td-meta-item"><div className="td-meta-label">Project manager</div><div className="td-meta-value">{project.pm?.name ?? '—'}</div></div>
-            <div className="td-meta-item"><div className="td-meta-label">Status</div><div className="td-meta-value">{project.status}</div></div>
+            <div className="td-meta-item"><div className="td-meta-label">Stage</div><div className="td-meta-value">{formatStatus(project.status)}</div></div>
             <div className="td-meta-item"><div className="td-meta-label">Priority</div><div className="td-meta-value"><PrioChip p={project.priority} /></div></div>
             <div className="td-meta-item"><div className="td-meta-label">Start</div><div className="td-meta-value mono">{new Date(project.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div></div>
             <div className="td-meta-item"><div className="td-meta-label">End</div><div className="td-meta-value mono">{new Date(project.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div></div>

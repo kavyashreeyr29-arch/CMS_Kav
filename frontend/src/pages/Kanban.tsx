@@ -21,12 +21,14 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: 'epic', label: 'Epic' },
 ];
 
-// Pre-development intake/approval pipeline columns come first, then the
-// engineering delivery columns — Closed/Reopened stay off the board (same as
-// before), reachable only from the ticket detail page.
+// Pre-development intake/approval pipeline columns come first, then the full
+// engineering SDLC — Requirement Gathering through Closed, all in one
+// horizontally-scrolling row (see .kanban-columns). Reopened stays off the
+// board (it's a transient re-triage state, not a stage anyone parks in) —
+// reachable from the ticket detail page.
 const STATUS_COLUMNS = [
   'RequirementGathering', 'CommercialApproval', 'RequirementApproval', 'ManagerApproval',
-  'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed',
+  'Open', 'Assigned', 'InProgress', 'InReview', 'QATesting', 'Completed', 'Closed',
 ];
 const PRIORITY_ORDER = ['Critical', 'High', 'Medium', 'Low'];
 const PRIORITY_COLOR: Record<string, string> = { Critical: '#E2483B', High: '#F5A524', Medium: '#3B6CF4', Low: '#7C8598' };
@@ -140,7 +142,7 @@ export function Kanban() {
     return (
       <>
         {toolbar}
-        <div className="kanban">
+        <div className="kanban-columns">
           {STATUS_COLUMNS.map((col) => {
             const items = tickets.filter((t) => t.status === col);
             return (
@@ -177,7 +179,7 @@ export function Kanban() {
             {lane.label}
             <span className="swimlane-count">{lane.tickets.length}</span>
           </div>
-          <div className="kanban" style={{ minHeight: 0 }}>
+          <div className="kanban-cards">
             {lane.tickets.slice(0, 40).map(card)}
           </div>
         </div>

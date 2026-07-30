@@ -25,7 +25,7 @@ test.describe('Attachments', () => {
 
     const [downloadPage] = await Promise.all([
       context.waitForEvent('page'),
-      attachmentCard.locator('.att-download').click(),
+      attachmentCard.locator('.att-download-btn').click(),
     ]);
     await downloadPage.waitForLoadState();
     // A real presigned MinIO URL, not the old unreachable https://storage.local stub.
@@ -42,8 +42,10 @@ test.describe('Attachments', () => {
     // default Overview tab into its own tab.
     await page.locator('.proj-tab-bar').getByText('Docs & Files').click();
 
+    // Docs & Files now has two upload areas (general + commercial docs,
+    // CHANGELOG.md) — scope to the general one.
     const fileName = `e2e-doc-${Date.now()}.txt`;
-    await page.locator('input[type=file]').setInputFiles({
+    await page.locator('input[type=file]').first().setInputFiles({
       name: fileName,
       mimeType: 'text/plain',
       buffer: Buffer.from('e2e project document content'),

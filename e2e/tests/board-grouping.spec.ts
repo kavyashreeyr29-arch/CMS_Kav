@@ -17,8 +17,9 @@ test.describe('Board grouping', () => {
     for (const g of ['Status', 'Assignee', 'Priority', 'Type', 'Epic']) {
       await expect(page.locator('.board-toolbar .seg button', { hasText: g })).toBeVisible();
     }
-    // Status view uses the classic columns, not swimlanes.
-    await expect(page.locator('.kanban .kcol').first()).toBeVisible();
+    // Status view uses the classic columns (a horizontally-scrolling row,
+    // CHANGELOG.md), not swimlanes.
+    await expect(page.locator('.kanban-columns .kcol').first()).toBeVisible();
     await expect(page.locator('.swimlane')).toHaveCount(0);
   });
 

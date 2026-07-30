@@ -3,6 +3,86 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-30 — Board scroll fix, SDLC project stages, live recording indicator, cleaner Approvals, demo data
+
+User feedback after trying the approval pipeline: the board only ever showed 5 columns (the rest existed but
+were invisible), projects had no edit option even though the org "follows SDLC" and status was just Active/
+Planning/OnHold/Completed, voice/video recording gave no visible sign it was actually recording, there was no
+way to attach commercial docs (agreements) to a project, the demo data was mostly E2E test debris so the
+approval feature was hard to evaluate, and the Approvals panel itself "looks a mess."
+
+### Fixed — board only showed 5 of 11 status columns
+`.kanban`'s CSS was a hardcoded `grid-template-columns: repeat(5, 1fr)` — with the pipeline's 4 new statuses
+the board now has 10-11 columns, and the 6 that didn't fit silently wrapped to a second row far below the
+first column's tall card list, reading as "columns are missing" rather than "scroll down". Split into two
+purpose-built layouts: `.kanban-columns` (Status view — always a single horizontally-scrolling row, Trello/
+Jira style, matching what the mobile breakpoint already did) and `.kanban-cards` (the swimlane views' wrapping
+card grid — these were incorrectly sharing one class with opposite layout needs). Also added **Closed** as a
+board column (previously deliberately excluded; the user asked for it explicitly).
+
+### Added — real SDLC phases for `ProjectStatus`, and a project Edit capability
+`ProjectStatus` was `Active | Planning | OnHold | Completed` — not actually SDLC phases. Replaced with
+`Planning → RequirementAnalysis → Design → Implementation → Testing → Deployment → Maintenance`, plus
+`OnHold`/`Completed` as the two non-linear operational states. Migrated existing `Active` rows to `Planning`
+before the schema push (Postgres enums can't drop a value that's still referenced), then reseeded each demo
+project onto a distinct phase for a real spread.
+
+The bigger gap: **ProjectDetail had no edit UI at all** — `PATCH /projects/:code` already existed
+server-side (gated on the existing `createProject` permission), but nothing in the frontend called it. Added
+an Edit button + form on the Overview tab (name, client, PM, SDLC stage, priority, dates, description),
+visible to the same roles the backend already permits.
+
+### Added — visible recording indicator ("how will a user know it's recording?")
+`MediaRecorderCapture` only showed a recorded clip's preview *after* stopping — during recording, the only
+signal was the pill button's color, easy to miss. Added a `recorder-live` state: a pulsing "● REC 0:04"
+badge always visible while recording, a **live camera preview** bound to the actual `MediaStream` for video
+(not just the button), and an animated level meter (Web Audio API `AnalyserNode`) for audio so there's
+visible motion even with no picture.
+
+### Added — commercial documents on a project
+Docs & Files had one general document bucket. Added a second "Commercial documents" section (agreements,
+SOWs, quotes, invoices) with its own uploader, tagged via `ProjectDocument.section = 'commercial'` — same
+per-section-tag mechanism already used for Campaign/Reward/Communication/To-do files.
+
+### Fixed — demo data was mostly E2E test debris
+235+ tickets titled "E2E …" (Playwright test artifacts accumulated over many prior sessions) plus 37
+ephemeral test-created projects (`E2E5953083`, `E2EACC1821`, etc.) were inflating ticket counts (260+ sitting
+in "Open" alone) and making the new approval pipeline hard to evaluate — almost nothing demonstrated it.
+Deleted all of it and reseeded: `seed.ts` now creates a handful of governance-type (Feature/ChangeRequest)
+tickets sitting at each intake stage with real `ApprovalRequest` history (approved, pending, rejected, and
+changes-requested examples, so every decision state has a real row to look at) rather than an empty board
+column and an empty Approvals panel. Also seeded a Campaign, a Reward, project notes, and to-do items so the
+Basecamp-style tabs aren't empty either.
+
+### Fixed — a real bug in the redesign: frontend/backend disagreed on who could decide an approval
+While rewriting the panel, found `ApprovalsPanel.canDecide()` still had `|| user.role.id === 'admin'` — the
+backend's `ApprovalsService.canDecide()` had that override **removed** in the previous pass specifically
+because it let a requester (often the Admin account) rubber-stamp their own request. The frontend was still
+showing Approve/Reject buttons to an admin viewing someone else's pending request, which would then 403 on
+click. Removed the stale override from the frontend to match.
+
+### Changed — Approvals panel redesign ("it looks a mess")
+The pending request's row carried an always-visible comment textarea + 3 buttons, making it much taller and
+heavier than the compact single-line approved/rejected rows next to it — inconsistent card weights read as
+clutter. Redesigned so every row (pending, approved, rejected, changes-requested) shares the same compact
+layout; Approve fires immediately (no comment needed, per the DTO); Reject/Request-changes reveal a comment
+box only once chosen, instead of showing it unconditionally next to every pending request regardless of
+which action is about to be taken.
+
+### Changed — attachment downloads: a clearly labeled button on every card, everywhere
+`AttachmentGrid`'s download control was a 20px icon-only circle absolutely positioned in a card's corner —
+easy to miss, and the same component is reused for ticket attachments, QA evidence, and every project
+tab's files (Docs & Files, Campaigns, Rewards, Communication, To-do). Replaced with a full-width "Download"
+text+icon button at the bottom of each card, so every file everywhere has an unmistakable way to get it.
+
+### Added — tests
+`e2e/tests/project-sdlc-and-commercial-docs.spec.ts` (edit persists/cancels, SDLC options offered, commercial
+vs. general doc separation, download button present); `approval-pipeline.spec.ts` gained a UI-level
+reject-with-comment test (comment box reveal, empty-comment rejection, decision + comment shown) and a
+Closed-column assertion. Fixed two tests broken by the intentional layout/DOM changes:
+`board-grouping.spec.ts` (`.kanban` → `.kanban-columns`), `attachments.spec.ts` (`.att-download` →
+`.att-download-btn`, and scoped its file input to the general uploader now that Docs & Files has two).
+
 ## 2026-07-30 — Pre-development approval pipeline (Requirement/Commercial/Manager approval)
 
 User request: the delivery workflow added yesterday only covers engineering work (Open→Closed) — real

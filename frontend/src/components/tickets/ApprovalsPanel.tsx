@@ -29,7 +29,13 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
   const [requestNote, setRequestNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [comments, setComments] = useState<Record<string, string>>({});
+  // Which pending request has its comment box open, and for which action —
+  // Approve needs no comment and fires immediately; Reject/Request changes
+  // reveal a comment box only when chosen, instead of showing an always-on
+  // textarea next to every pending request regardless of what the approver
+  // is about to do.
+  const [commentFor, setCommentFor] = useState<{ id: string; decision: 'rejected' | 'changes_requested' } | null>(null);
+  const [comment, setComment] = useState('');
 
   function load() {
     setLoading(true);
@@ -59,16 +65,27 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
     }
   }
 
-  async function decide(id: string, decision: 'approved' | 'rejected' | 'changes_requested') {
-    const comment = comments[id]?.trim();
-    if (decision !== 'approved' && !comment) {
-      setError('Add a comment describing what changes are needed before rejecting or requesting changes.');
-      return;
-    }
+  async function approve(id: string) {
     setBusy(true);
     setError('');
     try {
-      await approvalsApi.decide(id, { decision, comment: comment || undefined });
+      await approvalsApi.decide(id, { decision: 'approved' });
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not record the decision.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitComment() {
+    if (!commentFor || !comment.trim()) { setError('A comment is required.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await approvalsApi.decide(commentFor.id, { decision: commentFor.decision, comment: comment.trim() });
+      setCommentFor(null);
+      setComment('');
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record the decision.');
@@ -79,7 +96,7 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
 
   function canDecide(r: ApprovalRequest): boolean {
     if (r.decision !== 'pending' || !user) return false;
-    return r.approverUserId === user.id || r.approverRoleId === user.role.id || user.role.id === 'admin';
+    return r.approverUserId === user.id || r.approverRoleId === user.role.id;
   }
 
   if (loading) return null;
@@ -97,7 +114,7 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
       )}
 
       {showForm && (
-        <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+        <div className="approval-form">
           <div className="field">
             <label htmlFor="appr-label">What needs approval</label>
             <input id="appr-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Commercial Approval" />
@@ -123,61 +140,70 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
       {error && <div className="field-error" style={{ marginBottom: 12 }}>{error}</div>}
 
       {requests.length === 0 && !showForm ? (
-        <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+        <div className="approval-empty">
           No approval requests yet. Use "Send for approval" when this ticket needs commercial, requirement, or manager sign-off.
         </div>
       ) : (
-        <div className="pr-list">
+        <div className="approval-list">
           {requests.map((r) => {
             const meta = DECISION_META[r.decision];
             const iCanDecide = canDecide(r);
+            const commenting = commentFor?.id === r.id;
             return (
-              <div className="pr-item" key={r.id} style={{ alignItems: 'stretch' }}>
-                <div className="pr-item-icon" style={{ background: meta.bg, color: meta.color }}><meta.Icon size={15} /></div>
+              <div className="approval-row" key={r.id}>
+                <div className="approval-row-icon" style={{ background: meta.bg, color: meta.color }}><meta.Icon size={14} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="pr-item-title">{r.label}</div>
-                  <div className="pr-item-meta">
+                  <div className="approval-row-top">
+                    <span className="approval-row-label">{r.label}</span>
                     <span className="pr-badge" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
-                    <span style={{ color: 'var(--ink-faint)' }}>requested by {r.requestedBy.name}</span>
-                    <span style={{ color: 'var(--ink-faint)' }}>→ {r.approver?.name ?? r.approverRoleId}</span>
                   </div>
-                  {r.requestNote && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>"{r.requestNote}"</div>}
+                  <div className="approval-row-meta">
+                    {r.requestedBy.name} → {r.approver?.name ?? r.approverRoleId}
+                  </div>
+                  {r.requestNote && <div className="approval-note">"{r.requestNote}"</div>}
                   {r.decisionComment && (
-                    <div style={{ fontSize: 11, color: meta.color, marginTop: 4 }}>
-                      {r.decidedBy?.name}: "{r.decisionComment}"
+                    <div className="approval-note" style={{ color: meta.color }}>{r.decidedBy?.name}: "{r.decisionComment}"</div>
+                  )}
+
+                  {iCanDecide && !commenting && (
+                    <div className="approval-actions">
+                      <button className="approval-approve-btn" onClick={() => approve(r.id)} disabled={busy}>
+                        <CheckCircle2 size={12} />Approve
+                      </button>
+                      <button className="btn-destructive" onClick={() => { setCommentFor({ id: r.id, decision: 'rejected' }); setComment(''); setError(''); }} disabled={busy}>
+                        <XCircle size={12} />Reject
+                      </button>
+                      <button className="btn-ghost" onClick={() => { setCommentFor({ id: r.id, decision: 'changes_requested' }); setComment(''); setError(''); }} disabled={busy}>
+                        <MessageCircleWarning size={12} />Request changes
+                      </button>
                     </div>
                   )}
-                  {iCanDecide && (
-                    <div style={{ marginTop: 8 }}>
+
+                  {commenting && (
+                    <div className="approval-comment-box">
                       <textarea
-                        rows={1}
-                        placeholder="Comment (required to reject / request changes)"
-                        value={comments[r.id] ?? ''}
-                        onChange={(e) => setComments((c) => ({ ...c, [r.id]: e.target.value }))}
-                        style={{ width: '100%', marginBottom: 6, fontSize: 11.5 }}
+                        rows={2}
+                        autoFocus
+                        placeholder={commentFor.decision === 'rejected' ? 'Why is this being rejected?' : 'What changes are needed?'}
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
                       />
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn-primary" onClick={() => decide(r.id, 'approved')} disabled={busy} style={{ background: '#1A7F37' }}>
-                          <CheckCircle2 size={12} />Approve
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <button className="btn-destructive" onClick={submitComment} disabled={busy}>
+                          {busy ? 'Saving…' : commentFor.decision === 'rejected' ? 'Confirm reject' : 'Confirm request changes'}
                         </button>
-                        <button className="btn-destructive" onClick={() => decide(r.id, 'rejected')} disabled={busy}>
-                          <XCircle size={12} />Reject
-                        </button>
-                        <button className="btn-ghost" onClick={() => decide(r.id, 'changes_requested')} disabled={busy}>
-                          <MessageCircleWarning size={12} />Request changes
-                        </button>
+                        <button className="btn-ghost" onClick={() => setCommentFor(null)} disabled={busy}>Cancel</button>
                       </div>
                     </div>
+                  )}
+
+                  {!iCanDecide && r.decision === 'pending' && (
+                    <div className="approval-waiting">Waiting on {r.approver?.name ?? r.approverRoleId} to decide.</div>
                   )}
                 </div>
               </div>
             );
           })}
-        </div>
-      )}
-      {pending && !canDecide(pending) && (
-        <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8 }}>
-          Waiting on {pending.approver?.name ?? pending.approverRoleId} to decide "{pending.label}".
         </div>
       )}
     </div>

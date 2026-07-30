@@ -28,9 +28,19 @@ enum UserStatus {
   disabled
 }
 
+// Real SDLC phases (not just Active/Planning/OnHold/Completed) — a project
+// moves through these the same way a ticket moves through its own status
+// pipeline, so leadership can see which lifecycle stage each project is in
+// at a glance. OnHold/Completed stay as the two non-linear operational states
+// (paused, or done) alongside the six linear phases.
 enum ProjectStatus {
-  Active
   Planning
+  RequirementAnalysis
+  Design
+  Implementation
+  Testing
+  Deployment
+  Maintenance
   OnHold
   Completed
 }
@@ -407,8 +417,10 @@ model ProjectDocument {
   createdAt  DateTime @default(now()) @map("created_at")
   // Which Basecamp-style folder this file belongs to — null/'general' is the
   // main Docs & Files list. 'campaign'/'reward' files also carry the specific
-  // record they're attached to; 'communication'/'todo' are shared per-project
-  // buckets (no per-post/per-item attachment in this version).
+  // record they're attached to; 'communication'/'todo'/'commercial' are
+  // shared per-project buckets (no per-post/per-item attachment). 'commercial'
+  // is for agreements/SOWs/invoices — separated from general docs since these
+  // are typically access-sensitive and reviewed by a different audience.
   section    String?  @map("section")
   campaignId String?  @map("campaign_id")
   rewardId   String?  @map("reward_id")

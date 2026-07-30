@@ -128,12 +128,44 @@ test.describe('Approval pipeline — UI', () => {
     await expect(panel.locator('.pr-badge', { hasText: 'Pending' })).toBeVisible();
   });
 
-  test('Board Status grouping shows the intake pipeline columns', async ({ page }) => {
+  test('Board Status grouping shows the intake pipeline columns plus Closed', async ({ page }) => {
     await login(page);
     await page.goto('/kanban');
     await expect(page.locator('.kcol-title', { hasText: 'Requirement Gathering' })).toBeVisible();
     await expect(page.locator('.kcol-title', { hasText: 'Commercial Approval' })).toBeVisible();
     await expect(page.locator('.kcol-title', { hasText: 'Requirement Approval' })).toBeVisible();
     await expect(page.locator('.kcol-title', { hasText: 'Manager Approval' })).toBeVisible();
+    // All 11 columns exist in the DOM even though only some fit on screen —
+    // .kanban-columns scrolls horizontally rather than wrapping.
+    await expect(page.locator('.kcol-title', { hasText: 'Closed' })).toBeAttached();
+  });
+
+  test('The designated approver can reject with a comment through the UI, and it shows in the history', async ({ page, request }) => {
+    const reqToken = await token(request, REQUESTER_EMAIL);
+    const ticket = await createChangeRequest(request, reqToken, `E2E UI reject ${Date.now()}`);
+    const approver = await (await request.post(`${API_BASE}/auth/login`, { data: { email: APPROVER_EMAIL, password: 'password123' } })).json();
+    await request.post(`${API_BASE}/approvals`, {
+      headers: auth(reqToken), data: { ticketId: ticket.id, label: 'Commercial Approval', approverUserId: approver.user.id },
+    });
+
+    await login(page, APPROVER_EMAIL);
+    await page.goto(`/tickets/${ticket.id}`);
+    const panel = page.getByTestId('approvals-panel');
+    await expect(panel.locator('.pr-badge', { hasText: 'Pending' })).toBeVisible();
+
+    // Approve/Reject/Request-changes show up front with no comment box —
+    // the box only appears once an action that needs one is chosen.
+    await expect(panel.locator('.approval-comment-box')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Reject' }).click();
+    await expect(panel.locator('.approval-comment-box textarea')).toBeVisible();
+
+    // Confirming with no comment is rejected client-side.
+    await panel.getByRole('button', { name: 'Confirm reject' }).click();
+    await expect(page.locator('.field-error')).toBeVisible();
+
+    await panel.locator('.approval-comment-box textarea').fill('Scope is unclear — please add acceptance criteria.');
+    await panel.getByRole('button', { name: 'Confirm reject' }).click();
+    await expect(panel.locator('.pr-badge', { hasText: 'Rejected' })).toBeVisible();
+    await expect(panel).toContainText('Scope is unclear — please add acceptance criteria.');
   });
 });

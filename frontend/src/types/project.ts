@@ -1,6 +1,15 @@
 import { MimeKind, UserSummary } from './ticket';
 
-export type ProjectStatus = 'Active' | 'Planning' | 'OnHold' | 'Completed';
+// Real SDLC phases, not just Active/Planning/OnHold/Completed — see
+// CHANGELOG.md. Mirrors backend/prisma/schema.prisma's ProjectStatus.
+export type ProjectStatus =
+  | 'Planning' | 'RequirementAnalysis' | 'Design' | 'Implementation'
+  | 'Testing' | 'Deployment' | 'Maintenance' | 'OnHold' | 'Completed';
+// In lifecycle order — shared by the create and edit forms.
+export const PROJECT_STATUSES: ProjectStatus[] = [
+  'Planning', 'RequirementAnalysis', 'Design', 'Implementation',
+  'Testing', 'Deployment', 'Maintenance', 'OnHold', 'Completed',
+];
 export type Priority = 'Critical' | 'High' | 'Medium' | 'Low';
 
 export interface ProjectDocument {
@@ -11,7 +20,7 @@ export interface ProjectDocument {
   mimeKind: MimeKind;
   storageKey: string;
   createdAt: string;
-  section: 'campaign' | 'communication' | 'reward' | 'todo' | null;
+  section: 'campaign' | 'communication' | 'reward' | 'todo' | 'commercial' | null;
   campaignId: string | null;
   rewardId: string | null;
 }

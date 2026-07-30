@@ -51,13 +51,12 @@ export function AttachmentGrid({ files, getDownloadUrl }: Props) {
             <div className="att-size">{fileSizeLabel(a.fileSize)}</div>
           </div>
           <button
-            className="att-download"
+            className="att-download-btn"
             onClick={(e) => { e.stopPropagation(); download(a.id); }}
             disabled={downloadingId === a.id}
-            title="Download"
             aria-label={`Download ${a.fileName}`}
           >
-            <Download size={11} />
+            <Download size={11} />{downloadingId === a.id ? 'Downloading…' : 'Download'}
           </button>
         </div>
       ))}
