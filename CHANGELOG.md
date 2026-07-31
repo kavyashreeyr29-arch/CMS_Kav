@@ -3,6 +3,41 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-31 — Pending approvals surfaced under My Tasks
+
+User feedback: a ticket showing "Commercial Approval" pending doesn't tell the approver anything if they never
+go looking at that specific ticket — an approval assigned to you needs to show up somewhere you'd actually
+check, the same way an assigned ticket does under "My Tasks".
+
+### Added — `GET /approvals/mine`
+`backend/src/approvals/approvals.service.ts`'s new `listMine(user)` returns every pending `ApprovalRequest`
+where the current user is the decider — matching either `approverUserId` directly or `approverRoleId` against
+their base role, the same rule `canDecide()` already used per-ticket. Wired up at
+`approvals.controller.ts`'s `GET /approvals/mine`, verified live via curl as N. Rao (Director) before touching
+the UI — returned exactly the one real pending item seeded for them (ORION-1025's Requirement Approval) once
+E2E test debris was cleaned out of the way.
+
+### Added — "Pending your approval" panel on the My Tasks view
+`frontend/src/pages/TicketsList.tsx` now fetches `approvalsApi.listMine()` whenever `view=mine` and renders a
+panel above the ticket table (reusing `ApprovalsPanel`'s `.approval-row` styling) listing each pending request
+with its label, the ticket's display ID, title, and requester — click one to jump straight to that ticket.
+This is deliberately independent of the ticket table below it: an approval can be pending for you on a ticket
+assigned to someone else entirely (see the 2026-07-30 entry on ATLAS-1026), so filtering by `assigneeUserId`
+alone would never have shown it. Covered by a new Playwright test in `approval-pipeline.spec.ts` asserting
+exactly that — a ticket assigned to a third person still surfaces its pending approval under the approver's
+My Tasks.
+
+### Fixed — a second latent test locator bug, and stale test data hiding a real bug
+While regression-testing this, `sla-project-scoping.spec.ts` started failing intermittently: it creates a new
+SLA policy on every run with no cleanup, and its row-matching locator only kept resolution minutes distinct
+enough to avoid the seeded org-wide row — after enough repeat runs accumulated other org-wide policies with
+the same resolution value, `.first()` started grabbing one of those instead. Fixed by matching on the actual
+selected project's code (read back from the `<select>`'s own option text) instead of the resolution number.
+Also cleaned out ~90 leftover E2E-test-created tickets/projects/SLA policies that had accumulated across
+today's several full-suite runs — the same debris pattern as the 2026-07-30 entry below, this time bad enough
+to make the new "Pending your approval" panel itself misleading (showing fake "E2E CR ui ..." ticket titles)
+until cleaned.
+
 ## 2026-07-30 — Demo data for the assignee/approver split
 
 User question after seeing a "Commercial Approval" ticket: if it's assigned to someone, how do they end up

@@ -29,6 +29,24 @@ export class ApprovalsService {
     });
   }
 
+  // Pending requests where this user is the one who needs to act — a ticket
+  // being assigned to someone doesn't put its approvals on their plate, so
+  // "My Tasks" (tickets assigneeUserId = me) alone would never surface these;
+  // this is what feeds that view's "Pending your approval" section instead.
+  listMine(user: AuthenticatedUser) {
+    return this.prisma.approvalRequest.findMany({
+      where: {
+        decision: ApprovalDecision.pending,
+        OR: [{ approverUserId: user.id }, { approverRoleId: user.baseRoleId }],
+      },
+      include: {
+        ...APPROVAL_INCLUDE,
+        ticket: { select: { id: true, displayId: true, title: true, status: true, project: { select: { code: true, name: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async create(user: AuthenticatedUser, dto: CreateApprovalRequestDto) {
     if (!dto.approverUserId && !dto.approverRoleId) {
       throw new BadRequestException('Choose either a specific approver or an approver role');

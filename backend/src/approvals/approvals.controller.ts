@@ -15,6 +15,11 @@ export class ApprovalsController {
     return this.approvalsService.listForTicket(ticketId);
   }
 
+  @Get('mine')
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.approvalsService.listMine(user);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateApprovalRequestDto) {
     return this.approvalsService.create(user, dto);

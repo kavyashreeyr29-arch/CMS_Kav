@@ -1,5 +1,5 @@
 import { api } from './client';
-import { ApprovalRequest } from '../types/ticket';
+import { ApprovalRequest, MyApprovalRequest } from '../types/ticket';
 
 export interface CreateApprovalRequestInput {
   ticketId: string;
@@ -16,6 +16,7 @@ export interface DecideApprovalInput {
 
 export const approvalsApi = {
   listForTicket: (ticketId: string) => api.get<ApprovalRequest[]>('/approvals', { ticketId }),
+  listMine: () => api.get<MyApprovalRequest[]>('/approvals/mine'),
   create: (body: CreateApprovalRequestInput) => api.post<ApprovalRequest>('/approvals', body),
   decide: (id: string, body: DecideApprovalInput) => api.patch<ApprovalRequest>(`/approvals/${id}/decide`, body),
 };

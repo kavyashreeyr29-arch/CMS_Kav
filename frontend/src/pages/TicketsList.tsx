@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, Clock, Download, Lock, Paperclip, RotateCcw, Ticket as TicketIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Download, Lock, Paperclip, RotateCcw, ShieldCheck, Ticket as TicketIcon } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
+import { approvalsApi } from '../api/approvals';
 import { useAuth } from '../auth/AuthContext';
 import { PrioChip, SourceChip, StatusDot, LabelChip, formatStatus, formatSource } from '../components/ui/Chips';
 import { SlaBadge } from '../components/ui/SlaBadge';
 import { KpiCard } from '../components/ui/KpiCard';
 import { formatDuration } from '../components/ui/formatDuration';
 import { exportToCsv } from '../components/ui/exportCsv';
-import { Ticket } from '../types/ticket';
+import { MyApprovalRequest, Ticket } from '../types/ticket';
 import { ProjectFilterContext } from '../components/layout/AppShell';
 
 const STATUSES = [
@@ -31,6 +32,7 @@ export function TicketsList() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pendingApprovals, setPendingApprovals] = useState<MyApprovalRequest[]>([]);
 
   const status = params.get('status') ?? 'ALL';
   const priority = params.get('priority') ?? 'ALL';
@@ -66,6 +68,15 @@ export function TicketsList() {
       })
       .finally(() => setLoading(false));
   }, [status, priority, source, slaBreachedOnly, view, permissions, projectFilter]);
+
+  // A ticket being assigned to someone doesn't mean an approval on it is
+  // theirs to decide (the ATLAS payment-gateway ticket is assigned to a
+  // developer while its Commercial Approval sits with a Director) — so "My
+  // Tasks" needs its own pending-approvals list, not just assigneeUserId=me.
+  useEffect(() => {
+    if (view !== 'mine') { setPendingApprovals([]); return; }
+    approvalsApi.listMine().then(setPendingApprovals);
+  }, [view]);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -145,6 +156,25 @@ export function TicketsList() {
           <AlertTriangle size={14} />
           Showing only tickets that have breached their SLA target.
           <span className="select-pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setParam('slaBreached', '')}>Clear</span>
+        </div>
+      )}
+      {view === 'mine' && pendingApprovals.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14 }} data-testid="my-pending-approvals">
+          <div className="td-section-title"><ShieldCheck size={13} />Pending your approval ({pendingApprovals.length})</div>
+          <div className="approval-list">
+            {pendingApprovals.map((r) => (
+              <div className="approval-row clickable" key={r.id} onClick={() => navigate(`/tickets/${r.ticket.id}`)}>
+                <div className="approval-row-icon" style={{ background: '#FDF1DC', color: '#9A6700' }}><Clock size={14} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="approval-row-top">
+                    <span className="approval-row-label">{r.label}</span>
+                    <span className="tid">{r.ticket.displayId}</span>
+                  </div>
+                  <div className="approval-row-meta">{r.ticket.title} — requested by {r.requestedBy.name}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div className="filter-bar">

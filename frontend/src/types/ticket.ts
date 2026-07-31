@@ -113,6 +113,10 @@ export interface ApprovalRequest {
   decidedAt: string | null;
 }
 
+export interface MyApprovalRequest extends ApprovalRequest {
+  ticket: { id: string; displayId: string; title: string; status: TicketStatus; project: { code: string; name: string } };
+}
+
 export type PrState = 'open' | 'closed' | 'merged';
 export type PrReviewState = 'pending' | 'approved' | 'changes_requested';
 

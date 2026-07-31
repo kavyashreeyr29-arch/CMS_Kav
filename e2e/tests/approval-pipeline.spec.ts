@@ -168,4 +168,34 @@ test.describe('Approval pipeline — UI', () => {
     await expect(panel.locator('.pr-badge', { hasText: 'Rejected' })).toBeVisible();
     await expect(panel).toContainText('Scope is unclear — please add acceptance criteria.');
   });
+
+  test('A pending approval shows up under My Tasks for the designated approver, even when the ticket is assigned to someone else', async ({ page, request }) => {
+    const reqToken = await token(request, REQUESTER_EMAIL);
+    const approver = await (await request.post(`${API_BASE}/auth/login`, { data: { email: APPROVER_EMAIL, password: 'password123' } })).json();
+
+    // Assigned to a third person (a developer), not the approver — proves
+    // the "Pending your approval" list is driven by ApprovalRequest.approverUserId,
+    // not Ticket.assigneeUserId.
+    const users = await (await request.get(`${API_BASE}/users`, { headers: auth(reqToken) })).json();
+    const developer = users.find((u: { email: string }) => u.email !== APPROVER_EMAIL && u.email !== REQUESTER_EMAIL);
+    const created = await request.post(`${API_BASE}/tickets`, {
+      headers: auth(reqToken),
+      data: { projectCode: 'ATLAS', title: `E2E My Tasks approval ${Date.now()}`, type: 'ChangeRequest', priority: 'Medium', source: 'InternalPM', assigneeUserId: developer?.id },
+    });
+    const ticket = await created.json();
+    await request.post(`${API_BASE}/approvals`, {
+      headers: auth(reqToken), data: { ticketId: ticket.id, label: 'Commercial Approval', approverUserId: approver.user.id },
+    });
+
+    await login(page, APPROVER_EMAIL);
+    await page.goto('/tickets?view=mine');
+    const approvalsPanel = page.getByTestId('my-pending-approvals');
+    await expect(approvalsPanel).toBeVisible();
+    await expect(approvalsPanel).toContainText(ticket.displayId);
+    await expect(approvalsPanel).toContainText('Commercial Approval');
+
+    await approvalsPanel.locator('.approval-row', { hasText: ticket.displayId }).click();
+    await expect(page).toHaveURL(new RegExp(`/tickets/${ticket.id}`));
+    await expect(page.getByTestId('approvals-panel').locator('.pr-badge', { hasText: 'Pending' })).toBeVisible();
+  });
 });
