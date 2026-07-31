@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { NotificationType, Prisma, TicketStatus, TicketType } from '@prisma/client';
+import { ApprovalDecision, NotificationType, Prisma, TicketStatus, TicketType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -89,7 +89,26 @@ export class TicketsService {
         types?.length ? { type: { in: types as never[] } } : {},
         // PRD §5 — Developer/QA base roles default to "My Tasks"; explicit
         // view=all removes the filter, view=mine (or the default) applies it.
-        query.view === 'mine' ? { assigneeUserId: user.id } : {},
+        // Also includes tickets the user isn't assigned to but has a pending
+        // approval on (e.g. a director approving commercial terms on a
+        // ticket assigned to a developer) — otherwise filtering "My Tasks"
+        // by status/priority would hide exactly the tickets the "Pending
+        // your approval" panel above it just pointed them at.
+        query.view === 'mine'
+          ? {
+              OR: [
+                { assigneeUserId: user.id },
+                {
+                  approvalRequests: {
+                    some: {
+                      decision: ApprovalDecision.pending,
+                      OR: [{ approverUserId: user.id }, { approverRoleId: user.baseRoleId }],
+                    },
+                  },
+                },
+              ],
+            }
+          : {},
       ],
     };
 

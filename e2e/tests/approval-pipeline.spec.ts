@@ -194,6 +194,12 @@ test.describe('Approval pipeline — UI', () => {
     await expect(approvalsPanel).toContainText(ticket.displayId);
     await expect(approvalsPanel).toContainText('Commercial Approval');
 
+    // The ticket table below the panel is also "My Tasks" — it must include
+    // this ticket too (GET /tickets?view=mine), not just the panel above it,
+    // or filtering that table by status/priority would make the ticket the
+    // panel just pointed at disappear entirely.
+    await expect(page.locator('table.data-table tbody tr', { hasText: ticket.displayId })).toBeVisible();
+
     await approvalsPanel.locator('.approval-row', { hasText: ticket.displayId }).click();
     await expect(page).toHaveURL(new RegExp(`/tickets/${ticket.id}`));
     await expect(page.getByTestId('approvals-panel').locator('.pr-badge', { hasText: 'Pending' })).toBeVisible();

@@ -3,6 +3,28 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-31 — My Tasks ticket list was still assignee-only, hiding the tickets the new approvals panel pointed at
+
+User feedback right after the previous entry shipped: the "Pending your approval" panel correctly showed a
+ticket, but filtering the ticket table below it (still "My Tasks") turned up nothing — the panel said one
+thing, the table said another.
+
+### Fixed — `GET /tickets?view=mine` excluded tickets you only had a pending approval on
+`backend/src/tickets/tickets.service.ts`'s `view=mine` filter was `{ assigneeUserId: user.id }` only, so a
+ticket assigned to someone else that you'd been sent for approval on (exactly the scenario the previous entry
+added a panel for) never appeared in the table beneath that panel, even with every filter cleared. Broadened
+to `assigneeUserId = me OR has a pending ApprovalRequest where I'm the decider` (same `approverUserId` /
+`approverRoleId` match `canDecide()`/`listMine()` already use). Verified live: S. Iyer's real pending approval
+on ATLAS-1021 (a Bug ticket assigned to S. Dubey) now appears in her My Tasks table once filters are cleared —
+it did not before this fix.
+
+Note on a related but separate non-bug found during verification: filtering that same table by
+status = "Requirement Approval" still correctly shows nothing for that ticket, because its ticket `status` is
+`Open` — the approval's `label` ("Requirement Approval", free text, set when someone clicked "Send for
+approval") and a ticket's SDLC pipeline `status` enum value are two different fields that happen to share
+wording here. That's working as designed (labels were made free text specifically so any ticket, not just
+pre-dev governance ones, can go through an ad-hoc approval), not something this fix changes.
+
 ## 2026-07-31 — Pending approvals surfaced under My Tasks
 
 User feedback: a ticket showing "Commercial Approval" pending doesn't tell the approver anything if they never
