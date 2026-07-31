@@ -3,6 +3,34 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-07-30 — Demo data for the assignee/approver split
+
+User question after seeing a "Commercial Approval" ticket: if it's assigned to someone, how do they end up
+approving it? They don't — assignee and approver were already independent concepts (`Ticket.assigneeUserId`
+vs. the per-request `ApprovalRequest.approverUserId`), but every seeded governance ticket showed
+"Assignee: Unassigned", so the distinction was never visible in the demo data.
+
+### Added — a concrete assigned + approved-by-someone-else demo ticket
+`ATLAS-1026` ("Integrate new payment gateway") is now seeded with `assignee: 'P. Sharma'` (the developer who'll
+build the integration) while its Commercial Approval was requested by S. Iyer and approved by N. Rao (Director)
+— two different people from the assignee, on the ticket's own `ApprovalRequest` record. `HELIX-1025` similarly
+now has `assignee: 'M. Thomas'` doing prep work while its Manager's Approval sits pending against a separate
+approver. `backend/prisma/seed.ts`'s `GovernanceTicketCfg` gained an optional `assignee` field wired into the
+`ticket.create()` call's `assigneeUserId`.
+
+### Added — inline hint on the "Send for approval" form
+`ApprovalsPanel.tsx`'s approver `<select>` now has a `.field-hint` clarifying the approver doesn't have to be
+the ticket's assignee — pick whoever needs to sign off on that specific thing (e.g. a director for commercial
+terms), since this was exactly the point that wasn't obvious from the UI alone.
+
+### Fixed — a latent test locator bug found while regression-testing this change
+`project-basecamp-folders.spec.ts`'s Communication test used `getByRole('button', { name: 'Post' })`, an
+unqualified substring match that also matches the "Delete post" buttons on ATLAS's seeded notes once more than
+one exists on the page. Fixed with `exact: true`. Unrelated: two other failures seen mid-run
+(`phase2d-audit.spec.ts`, `team-hours-daily.spec.ts` — both `.wl-row` not found) turned out to be the "today"
+default date range coming up empty because the suite's wall-clock run crossed midnight past the seed's "today"
+timer session; re-running them in isolation afterwards passed cleanly, confirming it wasn't a real regression.
+
 ## 2026-07-30 — Board scroll fix, SDLC project stages, live recording indicator, cleaner Approvals, demo data
 
 User feedback after trying the approval pipeline: the board only ever showed 5 columns (the rest existed but

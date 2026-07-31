@@ -125,6 +125,7 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
               <option value="">Select a person…</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
+            <div className="field-hint">Doesn't have to be the ticket's assignee — pick whoever needs to sign off on this specific thing (e.g. a director for commercial terms).</div>
           </div>
           <div className="field">
             <label htmlFor="appr-note">Note (optional)</label>

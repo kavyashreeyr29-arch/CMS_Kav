@@ -404,6 +404,12 @@ async function main() {
     reporter: string;
     createdDaysAgo: number;
     approvals: GovernanceApprovalCfg[];
+    // Deliberately independent of `approvals[].approver` — the assignee does
+    // the work, the approver signs off on a specific ApprovalRequest, and
+    // they're very often different people. A couple of entries below set
+    // this to make that concrete rather than leaving every demo ticket
+    // "Unassigned".
+    assignee?: string;
   }
 
   const GOVERNANCE_TICKETS: GovernanceTicketCfg[] = [
@@ -414,6 +420,10 @@ async function main() {
     {
       projectCode: 'ATLAS', title: 'Integrate new payment gateway', type: TicketType.ChangeRequest,
       status: TicketStatus.CommercialApproval, reporter: 'S. Iyer', createdDaysAgo: 5,
+      // Assigned to the developer who'll build the integration, while the
+      // Director (a different person) is the one who signed off on the
+      // commercial terms — assignment and approval are separate axes.
+      assignee: 'P. Sharma',
       approvals: [
         { label: 'Commercial Approval', requestedBy: 'S. Iyer', approver: 'N. Rao', decision: 'approved', note: 'Vendor quote attached — needs sign-off before we scope it.', requestedDaysAgo: 4, decidedDaysAgo: 3 },
       ],
@@ -429,6 +439,10 @@ async function main() {
     {
       projectCode: 'HELIX', title: 'Migrate reporting pipeline to new data warehouse', type: TicketType.ChangeRequest,
       status: TicketStatus.ManagerApproval, reporter: 'A. Fernandes', createdDaysAgo: 12,
+      // Already assigned and doing prep work even though the Manager's
+      // Approval below is still pending — the dev doesn't need to wait for
+      // sign-off to be assigned, only to move past the ManagerApproval gate.
+      assignee: 'M. Thomas',
       approvals: [
         { label: 'Commercial Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'approved', requestedDaysAgo: 10, decidedDaysAgo: 9 },
         { label: 'Requirement Approval', requestedBy: 'A. Fernandes', approver: 'N. Rao', decision: 'approved', requestedDaysAgo: 7, decidedDaysAgo: 6 },
@@ -467,6 +481,7 @@ async function main() {
         source: TicketSource.InternalPM,
         businessCategory: BUSINESS_CATEGORY_CYCLE[0],
         reporterUserId: userByName.get(cfg.reporter)!,
+        assigneeUserId: cfg.assignee ? userByName.get(cfg.assignee) : undefined,
         createdAt: daysAgo(cfg.createdDaysAgo),
         updatedAt: daysAgo(cfg.approvals[0]?.decidedDaysAgo ?? cfg.createdDaysAgo),
       },

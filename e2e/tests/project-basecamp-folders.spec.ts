@@ -58,7 +58,9 @@ test.describe('Project detail — Basecamp-style folders', () => {
     await page.locator('.proj-tab-bar').getByText('Communication').click();
     const body = `E2E update ${Date.now()}`;
     await page.locator('textarea[placeholder*="Post an update"]').fill(body);
-    await page.getByRole('button', { name: 'Post' }).click();
+    // exact: true — ATLAS has seeded notes with "Delete post" buttons, whose
+    // accessible name otherwise substring-matches "Post" too.
+    await page.getByRole('button', { name: 'Post', exact: true }).click();
     await expect(page.locator('.note-item', { hasText: body })).toBeVisible();
 
     await page.locator('.note-item', { hasText: body }).locator('.icon-btn').click();
