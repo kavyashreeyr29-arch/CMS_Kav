@@ -59,15 +59,52 @@ test.describe('My Timesheet — API', () => {
     const res = await request.delete(`${API_BASE}/time-entries/${timerEntry.id}`, { headers: auth(t) });
     expect(res.status()).toBe(400);
   });
+
+  test('team-summary is org-wide for a director (no timeTracking) but forbidden for an individual-visibility role', async ({ request }) => {
+    const dirT = await token(request, DIRECTOR_EMAIL);
+    const summary = await request.get(`${API_BASE}/time-entries/team-summary?startDate=2026-06-01&endDate=2026-08-03`, { headers: auth(dirT) });
+    expect(summary.ok()).toBeTruthy();
+    const rows = await summary.json();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toHaveProperty('automated_minutes');
+    expect(rows[0]).toHaveProperty('manual_minutes');
+
+    const devT = await token(request, DEVELOPER_EMAIL);
+    const forbidden = await request.get(`${API_BASE}/time-entries/team-summary?startDate=2026-06-01&endDate=2026-08-03`, { headers: auth(devT) });
+    expect(forbidden.status()).toBe(403);
+  });
+
+  test('a director can drill into a specific person via ?userId=, an individual-visibility role cannot', async ({ request }) => {
+    const dirT = await token(request, DIRECTOR_EMAIL);
+    const devLogin = await (await request.post(`${API_BASE}/auth/login`, { data: { email: DEVELOPER_EMAIL, password: 'password123' } })).json();
+
+    const asDirector = await request.get(
+      `${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03&userId=${devLogin.user.id}`,
+      { headers: auth(dirT) },
+    );
+    expect(asDirector.ok()).toBeTruthy();
+
+    const otherDevT = await token(request, 'jortiz@elevatohub.io');
+    const asPeer = await request.get(
+      `${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03&userId=${devLogin.user.id}`,
+      { headers: auth(otherDevT) },
+    );
+    expect(asPeer.status()).toBe(403);
+  });
 });
 
 test.describe('My Timesheet — UI', () => {
-  test('nav item is visible for a time-tracking role and hidden for one that is not', async ({ page }) => {
+  test('nav item is visible both for a time-tracking role (individual view) and an org-visibility role with no timeTracking (team view)', async ({ page }) => {
     await login(page, DEVELOPER_EMAIL);
     await expect(page.locator('.nav-item', { hasText: 'My Timesheet' })).toBeVisible();
 
     await page.evaluate(() => localStorage.clear());
     await login(page, DIRECTOR_EMAIL);
+    await expect(page.locator('.nav-item', { hasText: 'My Timesheet' })).toBeVisible();
+
+    // ...but hidden for a role with neither timeTracking nor org/team work-hours visibility.
+    await page.evaluate(() => localStorage.clear());
+    await login(page, 'rgupta@elevatohub.io');
     await expect(page.locator('.nav-item', { hasText: 'My Timesheet' })).toHaveCount(0);
   });
 
@@ -113,5 +150,25 @@ test.describe('My Timesheet — UI', () => {
     await page.locator('#ts-to').fill('13:00');
     await panel.getByRole('button', { name: 'Save entry' }).click();
     await expect(page.locator('.field-error')).toBeVisible();
+  });
+
+  test('a director lands on the Team overview by default, and drilling into a person shows a read-only view', async ({ page }) => {
+    await login(page, DIRECTOR_EMAIL);
+    await page.goto('/timesheet');
+    const teamPanel = page.getByTestId('timesheet-team-summary');
+    await expect(teamPanel).toBeVisible();
+    await expect(teamPanel.locator('table.data-table tbody tr').first()).toBeVisible();
+    // No individual "Add entry" workflow visible on the team overview itself.
+    await expect(page.getByRole('button', { name: 'Add entry' })).toHaveCount(0);
+
+    await teamPanel.locator('table.data-table tbody tr.clickable').first().click();
+    await expect(page.getByTestId('timesheet-team-summary')).toHaveCount(0);
+    await expect(page.getByTestId('timesheet-automated')).toBeVisible();
+    // Viewing someone else — read-only: no way to add or delete a manual entry.
+    await expect(page.getByRole('button', { name: 'Add entry' })).toHaveCount(0);
+    await expect(page.getByTestId('timesheet-manual').locator('.icon-btn')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Back to team overview' }).click();
+    await expect(page.getByTestId('timesheet-team-summary')).toBeVisible();
   });
 });

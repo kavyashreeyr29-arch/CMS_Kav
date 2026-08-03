@@ -26,10 +26,11 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/comms', label: 'Comms & tracking', icon: Mail, show: (p) => p.comms },
   { path: '/analytics', label: 'Analytics', icon: BarChart3, show: (p) => p.adminAnalytics },
   { path: '/work-hours', label: 'Team hours', icon: Clock3, show: (p) => p.workHoursVisibility !== 'none' },
-  // Personal timesheet — anyone who can start a ticket timer can also fill
-  // in a manual entry for time they forgot to track; gated on the same
-  // `timeTracking` flag as the Start/Stop timer buttons themselves.
-  { path: '/timesheet', label: 'My Timesheet', icon: CalendarClock, show: (p) => p.timeTracking },
+  // Timesheet — individual view for anyone who can start a ticket timer
+  // (timeTracking), OR the Team overview for org/team-visibility roles
+  // (Admin/Director/PM see everyone, Lead sees their led team) even if they
+  // don't track their own time (e.g. Director).
+  { path: '/timesheet', label: 'My Timesheet', icon: CalendarClock, show: (p) => p.timeTracking || p.workHoursVisibility === 'org' || p.workHoursVisibility === 'team' },
   { path: '/users', label: 'Users & roles', icon: UserCog, show: (p) => p.userManagement },
   { path: '/teams', label: 'Teams', icon: Users2, show: (p) => p.userManagement },
   { path: '/roles', label: 'Roles & permissions', icon: ShieldCheck, show: (p) => p.manageRoles },

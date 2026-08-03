@@ -21,6 +21,15 @@ interface DailyWorkHoursRow {
   hours: number;
 }
 
+interface TeamTimesheetSummaryRow {
+  user_id: string;
+  name: string;
+  seniority: string | null;
+  automated_minutes: number;
+  manual_minutes: number;
+  tickets_touched: number;
+}
+
 @Injectable()
 export class TimeEntriesService {
   constructor(
@@ -163,10 +172,66 @@ export class TimeEntriesService {
   }
 
   // -- Personal timesheet (My Timesheet page) -----------------------------
-  // Everything below is self-scoped by construction (userId always ties back
-  // to the caller) — unlike workHours()/dailyBreakdown() above, there's no
-  // visibility gate to apply beyond "can this role track time at all",
-  // enforced in the controller.
+  // listMine()/createManual()/deleteManual() operate on a single userId at a
+  // time — always the caller's own for create/delete, but listMine() can
+  // also be pointed at someone else's entries for the team-overview drill-
+  // down below, gated by canViewUser() (enforced in the controller).
+
+  /** Can `user` see `targetUserId`'s timesheet — always true for yourself, otherwise the same org/team visibility Team Hours already uses. */
+  async canViewUser(user: AuthenticatedUser, perms: RolePermissions, targetUserId: string): Promise<boolean> {
+    if (targetUserId === user.id) return true;
+    if (perms.workHoursVisibility === 'org') return true;
+    if (perms.workHoursVisibility === 'team') {
+      const scopedUserIds = await this.resolveScopedUserIds(user, perms);
+      return !!scopedUserIds?.includes(targetUserId);
+    }
+    return false;
+  }
+
+  /**
+   * Per-person automated vs. manual totals for the "Team" overview shown to
+   * org/team-visibility roles (Admin/Director/PM see everyone, Lead sees
+   * their led team) — the equivalent of workHours() above, but split by
+   * TimeEntry.source instead of lumping timer and manual time together.
+   */
+  async teamSummary(
+    user: AuthenticatedUser,
+    perms: RolePermissions,
+    startDate?: string,
+    endDate?: string,
+    teamIds?: string[],
+    memberUserId?: string,
+  ) {
+    const today = new Date().toISOString().slice(0, 10);
+    const rangeStart = startDate ?? today;
+    const rangeEnd = endDate ?? startDate ?? today;
+
+    const scopedUserIds = await this.resolveScopedUserIds(user, perms, teamIds, memberUserId);
+    if (scopedUserIds && scopedUserIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.prisma.$queryRaw<TeamTimesheetSummaryRow[]>(Prisma.sql`
+      SELECT u.id AS user_id, u.name, u.seniority,
+             SUM(CASE WHEN te.source = 'timer' THEN EXTRACT(EPOCH FROM (COALESCE(te.ended_at, now()) - te.started_at)) / 60 ELSE 0 END) AS automated_minutes,
+             SUM(CASE WHEN te.source = 'manual' THEN EXTRACT(EPOCH FROM (te.ended_at - te.started_at)) / 60 ELSE 0 END) AS manual_minutes,
+             COUNT(DISTINCT te.ticket_id) FILTER (WHERE te.source = 'timer') AS tickets_touched
+      FROM time_entries te
+      JOIN users u ON u.id = te.user_id
+      WHERE te.started_at::date BETWEEN ${rangeStart}::date AND ${rangeEnd}::date
+        AND u.org_id = ${user.orgId}
+        ${scopedUserIds?.length ? Prisma.sql`AND u.id IN (${Prisma.join(scopedUserIds)})` : Prisma.empty}
+      GROUP BY u.id, u.name, u.seniority
+      ORDER BY u.name ASC
+    `);
+
+    return rows.map((r) => ({
+      ...r,
+      automated_minutes: Number(r.automated_minutes),
+      manual_minutes: Number(r.manual_minutes),
+      tickets_touched: Number(r.tickets_touched),
+    }));
+  }
 
   /** Both timer-derived and manual entries for one person, oldest first — the frontend groups the timer ones by ticket itself. */
   listMine(userId: string, startDate: string, endDate?: string) {

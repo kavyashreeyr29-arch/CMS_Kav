@@ -22,8 +22,21 @@ export interface CreateManualTimeEntryInput {
   ticketId?: string;
 }
 
+export interface TeamTimesheetSummaryRow {
+  user_id: string;
+  name: string;
+  seniority: string | null;
+  automated_minutes: number;
+  manual_minutes: number;
+  tickets_touched: number;
+}
+
 export const timesheetApi = {
-  listMine: (params: { startDate: string; endDate?: string }) => api.get<TimesheetEntry[]>('/time-entries/mine', params),
+  // userId lets an org/team-visibility viewer drill into someone else's
+  // entries; omitted (or your own id) always means "my own".
+  listMine: (params: { startDate: string; endDate?: string; userId?: string }) => api.get<TimesheetEntry[]>('/time-entries/mine', params),
+  teamSummary: (params: { startDate: string; endDate?: string; team?: string; userId?: string }) =>
+    api.get<TeamTimesheetSummaryRow[]>('/time-entries/team-summary', params),
   createManual: (body: CreateManualTimeEntryInput) => api.post<TimesheetEntry>('/time-entries', body),
   deleteManual: (id: string) => api.delete<{ id: string }>(`/time-entries/${id}`),
 };

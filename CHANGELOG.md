@@ -3,6 +3,37 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-03 — My Timesheet: Team overview for Admin/Director/PM/Lead
+
+User feedback right after My Timesheet shipped: Admin should see the overall team's time, not just their own;
+Director too, even though Director doesn't track their own time at all.
+
+### Added — `GET /time-entries/team-summary`, `GET /time-entries/mine?userId=`
+`TimeEntriesService.teamSummary()` — per-person automated vs. manual totals + distinct tickets touched, reusing
+the same `resolveScopedUserIds()` org/team/own scoping `reports/work-hours` already established (Admin/Director/
+PM see everyone, Lead sees only their led team). Deliberately reused rather than adding a new admin/director-
+only special case, since the codebase already has an admin-configurable permission flag
+(`workHoursVisibility`) for exactly this "who else can this role see time for" distinction — hardcoding two
+role names would have bypassed the dynamic-RBAC system this app is built around. `listMine()`'s existing
+`?userId=` support (it already took a raw userId, not hardcoded to "self") is now reachable for someone other
+than the caller too, gated by a new `canViewUser()` check: always allowed for yourself, otherwise the same
+org/team visibility rule. Verified live via curl — Director's team-summary returns real per-person automated/
+manual splits, a Lead's is correctly scoped to only their led team's members (confirmed one team member outside
+the team does *not* appear), and a peer developer gets a 403 trying to view someone else's `mine`.
+
+### Changed — Timesheet page: Team overview + drill-down for org/team-visibility roles
+`frontend/src/pages/Timesheet.tsx` — Admin/Director/PM/Lead now land on a **Team** panel by default (name,
+automated, manual, total, tickets touched — reusing the same `TeamTimesheetSummaryRow` shape), click a person
+to drill into the exact same automated/manual detail view individual contributors already had, with a "Back to
+team overview" link. The drill-down is read-only unless it's your own row — no "Add entry" button or delete
+icons appear on someone else's data, enforced by the same `isOwnView` check the UI already needed for the
+create/delete permission boundary. Individual-visibility roles (Senior/Junior Developer, Intern, QA) see no
+change at all — straight to their own timesheet, exactly as before.
+
+### Changed — nav gating
+`My Timesheet` now shows for `timeTracking || workHoursVisibility === 'org' || workHoursVisibility === 'team'`
+(was `timeTracking` alone) — Director has no `timeTracking` but needs the nav item for the Team overview.
+
 ## 2026-08-03 — My Timesheet: automated (from timers) + manual entry
 
 User request: a standard timesheet for developers — automatic, from the ticket timers they already use (which

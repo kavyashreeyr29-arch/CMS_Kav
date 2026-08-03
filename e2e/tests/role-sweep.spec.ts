@@ -20,7 +20,9 @@ const ROLE_EXPECTATIONS: { button: string; landingPath: RegExp; navItems: string
     // reporting, not just Admin.
     button: 'Director',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours'],
+    // My Timesheet is visible even without timeTracking — Director gets the
+    // org-wide Team overview there, not a personal timer-based view.
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Project Manager',
