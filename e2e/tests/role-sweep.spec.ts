@@ -12,7 +12,7 @@ const ROLE_EXPECTATIONS: { button: string; landingPath: RegExp; navItems: string
     // manageRoles, true only for Admin by default — see CHANGELOG.md.
     button: 'Admin',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'Users & roles', 'Teams', 'Roles & permissions', 'Workflow', 'GitHub integration', 'Audit log', 'Labels', 'Business categories', 'SLA policies', 'AI integrations'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'My Timesheet', 'Users & roles', 'Teams', 'Roles & permissions', 'Workflow', 'GitHub integration', 'Audit log', 'Labels', 'Business categories', 'SLA policies', 'AI integrations'],
   },
   {
     // Director gained Analytics access as part of the leadership-visibility
@@ -25,32 +25,32 @@ const ROLE_EXPECTATIONS: { button: string; landingPath: RegExp; navItems: string
   {
     button: 'Project Manager',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Lead',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Team tickets', 'Board', 'Comms & tracking', 'Analytics', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Team tickets', 'Board', 'Comms & tracking', 'Analytics', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Senior Developer',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Junior Developer',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Intern',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'QA',
     landingPath: /\/dashboard$/,
-    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours'],
+    navItems: ['Dashboard', 'Projects', 'Tickets', 'Backlog', 'Board', 'Comms & tracking', 'Team hours', 'My Timesheet'],
   },
   {
     button: 'Call Center Agent',

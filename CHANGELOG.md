@@ -3,6 +3,53 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-03 — My Timesheet: automated (from timers) + manual entry
+
+User request: a standard timesheet for developers — automatic, from the ticket timers they already use (which
+ticket, start date, end date, total time, and time invested per day), plus a manual fallback for when they
+forget to start the timer (task name, date, hours, and a from/to time range).
+
+### Added — `TimeEntry.source`/`taskName`, `ticketId` now nullable
+`backend/prisma/schema.prisma` — new `TimeEntrySource` enum (`timer` | `manual`) and a `taskName` field on
+`TimeEntry`; `ticketId` is now nullable since a manual entry may stand alone with no ticket at all (a meeting,
+admin time). The existing partial unique index enforcing "one active timer per person per ticket" is
+unaffected — manual entries are always created with `endedAt` already set, so they never match its
+`WHERE ended_at IS NULL` condition. `analytics.service.ts`'s `productivity()` query (hours-by-business-category)
+now explicitly excludes ticketless entries (`ticketId: { not: null }`) since it's inherently ticket-scoped.
+
+### Added — `GET/POST /time-entries/mine`, `POST /time-entries`, `DELETE /time-entries/:id`
+New `TimesheetController` (`backend/src/time-entries/timesheet.controller.ts`), alongside the existing
+`reports/work-hours` controller which stays as the separate manager/lead rollup. `listMine()` returns both
+timer and manual entries for a date range, self-scoped by construction. `createManual()` validates
+`toTime > fromTime` (same day), computes `durationMinutes` the same way `stopTimer()` already does, and
+optionally links a real ticket. `deleteManual()` only allows removing your own `source: manual` rows — timer
+entries stay immutable as the audit record. All three gated on the same `timeTracking` permission flag that
+already gates the Start/Stop timer buttons. Verified live via curl (including the 403 for a non-time-tracking
+role, the 400 for a reversed time range, and that a timer entry can't be deleted through this endpoint) before
+touching the UI.
+
+### Added — "My Timesheet" page and nav item
+`frontend/src/pages/Timesheet.tsx`, routed at `/timesheet`, nav-gated on `timeTracking` (same flag as above).
+Two panels: **Automated** — one row per ticket touched in the period (start date, end date, total time), click
+a row to expand the day-by-day breakdown as chips; **Manual entries** — a form (date, optional ticket picker
+that pre-fills the task name, task name, from/to time) plus a list with a delete button per row. Both sections
+have their own CSV export, matching the existing `exportToCsv` pattern from Team Hours. KPI cards at the top
+total automated vs. manual vs. combined hours for the period.
+
+### Fixed — a real bug found while building this: `DELETE` with no return body broke the frontend client
+`deleteManual()` initially had no `return` statement (implicit `undefined`), which NestJS serializes as a
+genuinely empty 200 response — the frontend's shared `api.delete()` calls `res.json()` unconditionally on
+any non-204 response, which throws `SyntaxError: Unexpected end of JSON input` on an empty body. The delete
+button visibly did nothing (row stayed, no error shown, promise rejected silently). Found via live UI
+testing, not a typecheck — fixed by returning `{ id }`, matching the same convention every other delete
+handler in this codebase already follows (e.g. `project-notes.service.ts`'s `remove()`) for exactly this
+reason.
+
+### Added — dummy data
+`backend/prisma/seed.ts` seeds a few manual entries for P. Sharma — one linked to a real ticket (echoing its
+title), two standalone (daily standup, sprint planning) — alongside the timer-derived entries already seeded
+across the last ~45 days, so both panels show real data on a fresh seed instead of an empty state.
+
 ## 2026-07-31 — My Tasks ticket list was still assignee-only, hiding the tickets the new approvals panel pointed at
 
 User feedback right after the previous entry shipped: the "Pending your approval" panel correctly showed a

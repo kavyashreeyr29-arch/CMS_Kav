@@ -68,7 +68,11 @@ export class AnalyticsService {
   async productivity(user: AuthenticatedUser, perms: RolePermissions, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
     const entries = await this.prisma.timeEntry.findMany({
-      where: { startedAt: { gte: since }, ticket: ticketVisibilityWhere(user, perms) },
+      // Manual timesheet entries (CHANGELOG.md) may have no ticket at all —
+      // this productivity view is ticket-scoped (hours per business category,
+      // distinct tickets worked), so exclude them explicitly rather than
+      // relying on ticketVisibilityWhere's implicit non-null relation filter.
+      where: { startedAt: { gte: since }, ticketId: { not: null }, ticket: ticketVisibilityWhere(user, perms) },
       select: {
         durationMinutes: true,
         ticketId: true,
@@ -84,7 +88,7 @@ export class AnalyticsService {
     for (const e of entries) {
       const row = byUser.get(e.userId) ?? { name: e.user?.name ?? 'Unknown', hours: 0, ticketIds: new Set<string>() };
       row.hours += Number(e.durationMinutes ?? 0) / 60;
-      row.ticketIds.add(e.ticketId);
+      row.ticketIds.add(e.ticketId!); // non-null guaranteed by the `ticketId: { not: null }` filter above
       byUser.set(e.userId, row);
     }
     const perDeveloper = [...byUser.entries()]
@@ -93,10 +97,10 @@ export class AnalyticsService {
 
     const byCategory = new Map<string, { hours: number; ticketIds: Set<string> }>();
     for (const e of entries) {
-      const cat = e.ticket.businessCategory ?? 'Uncategorized';
+      const cat = e.ticket!.businessCategory ?? 'Uncategorized'; // non-null guaranteed by the `ticketId: { not: null }` filter above
       const row = byCategory.get(cat) ?? { hours: 0, ticketIds: new Set<string>() };
       row.hours += Number(e.durationMinutes ?? 0) / 60;
-      row.ticketIds.add(e.ticketId);
+      row.ticketIds.add(e.ticketId!);
       byCategory.set(cat, row);
     }
     const businessCategoryBreakdown = [...byCategory.entries()]

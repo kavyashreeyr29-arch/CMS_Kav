@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, TimeEntrySource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { RolePermissions } from '../common/permissions/role-permissions';
+import { CreateManualTimeEntryDto } from './dto/create-manual-time-entry.dto';
 
 interface WorkHoursRow {
   user_id: string;
@@ -21,7 +23,10 @@ interface DailyWorkHoursRow {
 
 @Injectable()
 export class TimeEntriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activityLog: ActivityLogService,
+  ) {}
 
   // workHoursVisibility gates *who* the rollup can include: an org-wide
   // viewer sees everyone, a team-scoped Lead sees only their team(s), and an
@@ -155,5 +160,77 @@ export class TimeEntriesService {
       include: { ticket: { select: { id: true, displayId: true, title: true } } },
       orderBy: { startedAt: 'desc' },
     });
+  }
+
+  // -- Personal timesheet (My Timesheet page) -----------------------------
+  // Everything below is self-scoped by construction (userId always ties back
+  // to the caller) — unlike workHours()/dailyBreakdown() above, there's no
+  // visibility gate to apply beyond "can this role track time at all",
+  // enforced in the controller.
+
+  /** Both timer-derived and manual entries for one person, oldest first — the frontend groups the timer ones by ticket itself. */
+  listMine(userId: string, startDate: string, endDate?: string) {
+    const rangeEnd = endDate ?? startDate;
+    return this.prisma.timeEntry.findMany({
+      where: {
+        userId,
+        startedAt: { gte: new Date(`${startDate}T00:00:00Z`), lt: new Date(`${rangeEnd}T23:59:59.999Z`) },
+      },
+      include: { ticket: { select: { id: true, displayId: true, title: true } } },
+      orderBy: { startedAt: 'asc' },
+    });
+  }
+
+  async createManual(user: AuthenticatedUser, dto: CreateManualTimeEntryDto) {
+    const startedAt = new Date(`${dto.date}T${dto.fromTime}:00`);
+    const endedAt = new Date(`${dto.date}T${dto.toTime}:00`);
+    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
+      throw new BadRequestException('Invalid date/time');
+    }
+    if (endedAt <= startedAt) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    if (dto.ticketId) {
+      const ticket = await this.prisma.ticket.findUnique({ where: { id: dto.ticketId } });
+      if (!ticket) throw new BadRequestException('Ticket not found');
+    }
+
+    const durationMinutes = Math.round(((endedAt.getTime() - startedAt.getTime()) / 60000) * 100) / 100;
+
+    const entry = await this.prisma.timeEntry.create({
+      data: {
+        ticketId: dto.ticketId,
+        userId: user.id,
+        startedAt,
+        endedAt,
+        durationMinutes,
+        source: TimeEntrySource.manual,
+        taskName: dto.taskName,
+      },
+      include: { ticket: { select: { id: true, displayId: true, title: true } } },
+    });
+
+    if (dto.ticketId) {
+      await this.activityLog.record({
+        ticketId: dto.ticketId,
+        actorUserId: user.id,
+        actionType: 'timer_manual_entry',
+        actionText: `logged ${durationMinutes.toFixed(0)}m manually on ${dto.date} — "${dto.taskName}"`,
+      });
+    }
+
+    return entry;
+  }
+
+  async deleteManual(id: string, user: AuthenticatedUser) {
+    const entry = await this.prisma.timeEntry.findUnique({ where: { id } });
+    if (!entry) throw new NotFoundException('Time entry not found');
+    if (entry.source !== TimeEntrySource.manual) {
+      throw new BadRequestException('Only manually-entered rows can be deleted — timer-derived entries are the audit record for a ticket');
+    }
+    if (entry.userId !== user.id) throw new ForbiddenException('You can only delete your own manual entries');
+    await this.prisma.timeEntry.delete({ where: { id } });
+    return { id };
   }
 }

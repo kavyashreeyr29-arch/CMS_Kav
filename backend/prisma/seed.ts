@@ -1,7 +1,7 @@
 // Seeds a demo dataset mirroring docs/prototype/pulse-dashboard.jsx so the
 // real app has something to look at immediately. Run with `npm run seed`
 // after `npm run prisma:push`.
-import { Prisma, PrismaClient, Priority, ProjectStatus, TicketSource, TicketStatus, TicketType } from '@prisma/client';
+import { Prisma, PrismaClient, Priority, ProjectStatus, TicketSource, TicketStatus, TicketType, TimeEntrySource } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -642,6 +642,36 @@ async function main() {
         data: { ticketId: atlasTicket.id, userId, startedAt, endedAt, durationMinutes: 120 },
       });
     }
+  }
+
+  // My Timesheet (CHANGELOG.md) — a few manual entries so the "Manual
+  // entries" section isn't empty on a fresh seed: one tied to a real ticket
+  // (echoing its title, as the UI does when you pick a ticket in the form),
+  // one standalone (a meeting, no ticket at all).
+  await prisma.timeEntry.deleteMany({ where: { source: TimeEntrySource.manual } });
+  const helixProjectForManual = await prisma.project.findUnique({ where: { code: 'HELIX' } });
+  const helixTicketForManual = helixProjectForManual
+    ? await prisma.ticket.findFirst({ where: { projectId: helixProjectForManual.id } })
+    : null;
+  const psharma = userByName.get('P. Sharma')!;
+  const manualEntries: { daysAgo: number; fromHour: number; toHour: number; taskName: string; ticketId?: string }[] = [
+    { daysAgo: 1, fromHour: 9, toHour: 9.5, taskName: 'Daily standup', ticketId: undefined },
+    ...(helixTicketForManual
+      ? [{ daysAgo: 2, fromHour: 15, toHour: 17, taskName: helixTicketForManual.title, ticketId: helixTicketForManual.id }]
+      : []),
+    { daysAgo: 5, fromHour: 14, toHour: 15, taskName: 'Sprint planning', ticketId: undefined },
+  ];
+  for (const m of manualEntries) {
+    const day = daysAgo(m.daysAgo);
+    const startedAt = new Date(day); startedAt.setHours(Math.floor(m.fromHour), (m.fromHour % 1) * 60, 0, 0);
+    const endedAt = new Date(day); endedAt.setHours(Math.floor(m.toHour), (m.toHour % 1) * 60, 0, 0);
+    const durationMinutes = Math.round(((endedAt.getTime() - startedAt.getTime()) / 60000) * 100) / 100;
+    await prisma.timeEntry.create({
+      data: {
+        ticketId: m.ticketId, userId: psharma, startedAt, endedAt, durationMinutes,
+        source: TimeEntrySource.manual, taskName: m.taskName,
+      },
+    });
   }
 
   // eslint-disable-next-line no-console

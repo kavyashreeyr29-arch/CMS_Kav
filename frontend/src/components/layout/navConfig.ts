@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Gauge, Folder, Ticket as TicketIcon, Trello, Mail,
-  BarChart3, UserCog, Tag, LucideIcon, ListTodo, Clock3, Shield, Bot, ShieldCheck, History, Users2,
+  BarChart3, UserCog, Tag, LucideIcon, ListTodo, Clock3, CalendarClock, Shield, Bot, ShieldCheck, History, Users2,
   GitBranch, Github,
 } from 'lucide-react';
 import { RolePermissions } from '../../types/permissions';
@@ -26,6 +26,10 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/comms', label: 'Comms & tracking', icon: Mail, show: (p) => p.comms },
   { path: '/analytics', label: 'Analytics', icon: BarChart3, show: (p) => p.adminAnalytics },
   { path: '/work-hours', label: 'Team hours', icon: Clock3, show: (p) => p.workHoursVisibility !== 'none' },
+  // Personal timesheet — anyone who can start a ticket timer can also fill
+  // in a manual entry for time they forgot to track; gated on the same
+  // `timeTracking` flag as the Start/Stop timer buttons themselves.
+  { path: '/timesheet', label: 'My Timesheet', icon: CalendarClock, show: (p) => p.timeTracking },
   { path: '/users', label: 'Users & roles', icon: UserCog, show: (p) => p.userManagement },
   { path: '/teams', label: 'Teams', icon: Users2, show: (p) => p.userManagement },
   { path: '/roles', label: 'Roles & permissions', icon: ShieldCheck, show: (p) => p.manageRoles },

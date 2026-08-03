@@ -593,24 +593,41 @@ model TicketAttachment {
 // Time tracking
 // ---------------------------------------------------------------------------
 
+enum TimeEntrySource {
+  timer
+  manual
+}
+
 model TimeEntry {
   id               String    @id @default(uuid())
-  ticketId         String    @map("ticket_id")
+  // Nullable — a manual timesheet entry (source: manual) may log a free-text
+  // task instead of a real ticket; a timer entry (source: timer) always has
+  // one, since it can only be started from a ticket.
+  ticketId         String?   @map("ticket_id")
   userId           String    @map("user_id")
   startedAt        DateTime  @map("started_at")
   endedAt          DateTime? @map("ended_at")
   // Fractional minutes (e.g. 0.50 = 30s) so a timer run under a minute
   // doesn't round down to a misleading 0 — see CHANGELOG.md phase-2 entry.
   durationMinutes  Decimal?  @map("duration_minutes") @db.Decimal(10, 2)
+  source           TimeEntrySource @default(timer) @map("source")
+  // Manual entries only — what the person typed as the task (may echo a
+  // linked ticket's title, or stand alone with no ticketId at all). Null for
+  // timer entries, which already have the ticket's own title for display.
+  taskName         String?   @map("task_name")
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id])
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id])
 
   // Enforces "one active timer per person per ticket" at the DB level.
   // Prisma cannot express a partial unique index directly — see
   // prisma/migrations/*_add_active_timer_constraint for the raw SQL that adds:
   //   CREATE UNIQUE INDEX ON time_entries (ticket_id, user_id) WHERE ended_at IS NULL;
+  // Untouched by the ticketId nullability change above: manual entries are
+  // always created with endedAt already set, so they can never match the
+  // partial index's `WHERE ended_at IS NULL` condition.
   @@index([ticketId, userId])
+  @@index([userId, startedAt])
   @@map("time_entries")
 }
 
