@@ -158,6 +158,10 @@ test.describe('My Timesheet — UI', () => {
     const teamPanel = page.getByTestId('timesheet-team-summary');
     await expect(teamPanel).toBeVisible();
     await expect(teamPanel.locator('table.data-table tbody tr').first()).toBeVisible();
+    // A whole-team KPI summary (Automated/Manual/Total/People) sits above the table.
+    await expect(page.locator('.kpi-grid .kpi-label', { hasText: 'Automated' })).toBeVisible();
+    await expect(page.locator('.kpi-grid .kpi-label', { hasText: 'Manual' })).toBeVisible();
+    await expect(page.locator('.kpi-grid .kpi-label', { hasText: 'People with time logged' })).toBeVisible();
     // No individual "Add entry" workflow visible on the team overview itself.
     await expect(page.getByRole('button', { name: 'Add entry' })).toHaveCount(0);
 

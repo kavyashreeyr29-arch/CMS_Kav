@@ -111,6 +111,9 @@ export function Timesheet() {
   const totalAutomatedMinutes = timerGroups.reduce((s, g) => s + g.totalMinutes, 0);
   const totalManualMinutes = manualEntries.reduce((s, e) => s + Number(e.durationMinutes ?? 0), 0);
 
+  const teamAutomatedMinutes = teamRows.reduce((s, r) => s + r.automated_minutes, 0);
+  const teamManualMinutes = teamRows.reduce((s, r) => s + r.manual_minutes, 0);
+
   async function submitManual() {
     if (!form.date || !form.fromTime || !form.toTime || !form.taskName.trim()) {
       setError('Fill in date, task name, and both times.');
@@ -192,36 +195,46 @@ export function Timesheet() {
       )}
 
       {showingTeamOverview ? (
-        <div className="panel" data-testid="timesheet-team-summary">
-          <div className="panel-head">
-            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}><Users size={14} />Team</div>
-            <button className="btn-ghost" onClick={exportTeam} disabled={teamRows.length === 0}><Download size={13} />CSV</button>
-          </div>
-          {teamLoading ? (
-            <div className="loading-state">Loading…</div>
-          ) : (
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead><tr><th>Name</th><th>Automated</th><th>Manual</th><th>Total</th><th>Tickets touched</th></tr></thead>
-                <tbody>
-                  {teamRows.map((r) => (
-                    <tr key={r.user_id} className="clickable" onClick={() => setViewingUserId(r.user_id)}>
-                      <td style={{ fontWeight: 600 }}>
-                        {r.name}
-                        {r.seniority && <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}> · {r.seniority.replace(/_/g, ' ')}</span>}
-                      </td>
-                      <td className="mono">{formatDuration(r.automated_minutes)}</td>
-                      <td className="mono">{formatDuration(r.manual_minutes)}</td>
-                      <td className="mono">{formatDuration(r.automated_minutes + r.manual_minutes)}</td>
-                      <td className="mono">{r.tickets_touched}</td>
-                    </tr>
-                  ))}
-                  {teamRows.length === 0 && <tr><td colSpan={5} className="empty-state">No time logged for this period.</td></tr>}
-                </tbody>
-              </table>
+        <>
+          {!teamLoading && (
+            <div className="kpi-grid cols-4" style={{ marginBottom: 14 }}>
+              <KpiCard icon={Timer} tone="brand" label="Automated" value={formatDuration(teamAutomatedMinutes)} sub="from ticket timers, whole team" />
+              <KpiCard icon={PenLine} tone="amber" label="Manual" value={formatDuration(teamManualMinutes)} sub="hand-entered, whole team" />
+              <KpiCard icon={Clock3} tone="green" label="Total logged" value={formatDuration(teamAutomatedMinutes + teamManualMinutes)} />
+              <KpiCard icon={Users} tone="ink" label="People with time logged" value={teamRows.length} />
             </div>
           )}
-        </div>
+          <div className="panel" data-testid="timesheet-team-summary">
+            <div className="panel-head">
+              <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}><Users size={14} />Team</div>
+              <button className="btn-ghost" onClick={exportTeam} disabled={teamRows.length === 0}><Download size={13} />CSV</button>
+            </div>
+            {teamLoading ? (
+              <div className="loading-state">Loading…</div>
+            ) : (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead><tr><th>Name</th><th>Automated</th><th>Manual</th><th>Total</th><th>Tickets touched</th></tr></thead>
+                  <tbody>
+                    {teamRows.map((r) => (
+                      <tr key={r.user_id} className="clickable" onClick={() => setViewingUserId(r.user_id)}>
+                        <td style={{ fontWeight: 600 }}>
+                          {r.name}
+                          {r.seniority && <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}> · {r.seniority.replace(/_/g, ' ')}</span>}
+                        </td>
+                        <td className="mono">{formatDuration(r.automated_minutes)}</td>
+                        <td className="mono">{formatDuration(r.manual_minutes)}</td>
+                        <td className="mono">{formatDuration(r.automated_minutes + r.manual_minutes)}</td>
+                        <td className="mono">{r.tickets_touched}</td>
+                      </tr>
+                    ))}
+                    {teamRows.length === 0 && <tr><td colSpan={5} className="empty-state">No time logged for this period.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       ) : (
         <>
           {!loading && (

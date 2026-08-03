@@ -3,6 +3,17 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-03 — Timesheet Team overview: KPI summary at the top
+
+User feedback right after the Team overview shipped: the per-person table was there, but there was no total —
+Admin/Director should see whole-team Automated/Manual/Total at a glance, not have to add up rows themselves.
+
+### Added
+`frontend/src/pages/Timesheet.tsx` — a `kpi-grid` above the Team table (Automated, Manual, Total logged, People
+with time logged), summed client-side from the same `teamSummary()` rows the table already renders — same KPI
+card treatment the individual view already had for Automated/Manual/Total/Tickets touched, just aggregated
+across everyone instead of one person.
+
 ## 2026-08-03 — My Timesheet: Team overview for Admin/Director/PM/Lead
 
 User feedback right after My Timesheet shipped: Admin should see the overall team's time, not just their own;
