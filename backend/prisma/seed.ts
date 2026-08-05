@@ -674,6 +674,49 @@ async function main() {
     });
   }
 
+  // Ticket linking (CHANGELOG.md) — a sub-task hierarchy on a real ticket
+  // (sub-tasks work on any ticket type now, not just the Epic/Story pairing
+  // seeded above) and a comment referencing another ticket by displayId, so
+  // "Add sub-task"/"Convert to standalone" and comment auto-linking both
+  // show real data on a fresh seed instead of an empty state.
+  await prisma.ticket.deleteMany({ where: { title: { in: ['Draft integration test plan', 'Coordinate vendor sandbox access'] } } });
+  await prisma.ticketComment.deleteMany({ where: { body: { contains: 'blocked on the SSO rollout' } } });
+  const paymentGatewayTicket = atlasProject
+    ? await prisma.ticket.findFirst({ where: { projectId: atlasProject.id, title: 'Integrate new payment gateway' } })
+    : null;
+  const ssoTicket = atlasProject
+    ? await prisma.ticket.findFirst({ where: { projectId: atlasProject.id, title: 'Add SSO login for enterprise clients' } })
+    : null;
+  if (paymentGatewayTicket && atlasProject) {
+    for (const subtitle of ['Draft integration test plan', 'Coordinate vendor sandbox access']) {
+      const seq = await prisma.project.update({ where: { id: atlasProject.id }, data: { ticketSeq: { increment: 1 } } });
+      await prisma.ticket.create({
+        data: {
+          displayId: `${atlasProject.code}-${seq.ticketSeq}`,
+          projectId: atlasProject.id,
+          parentTicketId: paymentGatewayTicket.id,
+          title: subtitle,
+          description: 'Seeded demo sub-task — see the parent ticket for the full payment-gateway context.',
+          type: TicketType.Task,
+          priority: Priority.Medium,
+          status: TicketStatus.Open,
+          source: TicketSource.InternalPM,
+          reporterUserId: userByName.get('P. Sharma')!,
+          assigneeUserId: userByName.get('P. Sharma')!,
+        },
+      });
+    }
+    if (ssoTicket) {
+      await prisma.ticketComment.create({
+        data: {
+          ticketId: paymentGatewayTicket.id,
+          authorUserId: userByName.get('P. Sharma')!,
+          body: `This is blocked on the SSO rollout — see ${ssoTicket.displayId} for status before we can finish the sandbox test.`,
+        },
+      });
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log('Seed complete. Demo login: any seeded email + password "password123".');
 }

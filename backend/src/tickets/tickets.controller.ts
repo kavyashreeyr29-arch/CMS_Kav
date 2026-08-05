@@ -6,6 +6,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { LinkCampaignDto } from './dto/link-campaign.dto';
 import { LinkRewardDto } from './dto/link-reward.dto';
+import { LinkParentDto } from './dto/link-parent.dto';
 import { CreateTestCaseDto, UpdateTestCaseDto } from './dto/test-case.dto';
 import { UpdateBacklogRankDto } from './dto/update-backlog-rank.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
@@ -71,6 +72,11 @@ export class TicketsController {
   @Patch(':id/reward')
   linkReward(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: LinkRewardDto) {
     return this.ticketsService.linkReward(id, user, effectivePermissions(user), dto.rewardId ?? null);
+  }
+
+  @Patch(':id/parent')
+  linkParent(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: LinkParentDto) {
+    return this.ticketsService.linkParent(id, user, effectivePermissions(user), dto.parentTicketId ?? null);
   }
 
   @Patch(':id/backlog-rank')

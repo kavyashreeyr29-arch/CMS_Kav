@@ -3,6 +3,49 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-05 — Ticket linking: copy link, auto-linked references, sub-tasks, convert to standalone
+
+User request: a way to copy a ticket's link and reference it from another ticket, plus create sub-tasks and
+later convert them back to standalone tickets.
+
+### Added — ticket lookup by displayId
+`backend/src/tickets/tickets.service.ts`'s `findOne()` now matches on `id` OR `displayId` (was `id` only) — a
+`GET /tickets/:id` accepts either the internal UUID every in-app navigation already uses, or a human-readable
+reference like `ATLAS-1024`. This is what lets a "copy link" URL and a bare displayId typed into a comment
+both resolve through the exact same route, with no separate lookup endpoint needed.
+
+### Added — `PATCH /tickets/:id/parent`
+`Ticket.parentTicketId` was already settable at creation time (`CreateTicketDto`) but had no way to change
+after the fact. New `linkParent()` in `tickets.service.ts` (mirrors the existing `linkCampaign`/`linkReward`
+pattern) sets or clears it, validates a ticket can't be its own parent, and walks the prospective parent's
+ancestor chain to reject anything that would create a circular sub-task chain. Verified live via curl,
+including the self-parent and cycle rejections, before touching the UI.
+
+### Added — Copy link, Add sub-task, Convert to standalone (`frontend/src/pages/TicketDetail.tsx`)
+- **Copy link** — copies `{origin}/tickets/{displayId}` (not the current UUID-based URL) to the clipboard,
+  Copy/Check icon-swap matching the existing pattern in `GithubIntegration.tsx`. Verified the clipboard
+  actually contains the displayId-based URL, not just that the button changed state.
+- **Add sub-task** — `CreateTicketModal.tsx` gained a `subtaskOf` prop: when set, the parent is fixed (no Epic
+  picker), the project is locked to the parent's, and it applies to any ticket type — sub-tasks aren't
+  restricted to the existing Story-under-Epic pairing. Creating one navigates straight to the new ticket,
+  which shows "Part of: `<parent>`" immediately.
+- **Convert to standalone ticket** — shown next to "Part of" on any ticket that has a parent; calls the new
+  parent endpoint with `null`. Both actions gated on the same internal-delivery-role check QA management
+  already uses (`scope === 'all' || 'team'`), not tied to the ticket's status the way title/description
+  editing is — re-parenting makes sense at any point in a ticket's lifecycle.
+
+### Added — auto-linked ticket references (`frontend/src/components/ui/Linkify.tsx`)
+Comment bodies and ticket descriptions now auto-link two things: a bare displayId mention (e.g. "see
+ATLAS-1024") and any pasted URL — internal ticket links resolve via React Router (no full page reload),
+everything else opens in a new tab. One combined regex with alternation (URL branch first) so a pasted "copy
+link" URL is consumed as a single match and its trailing displayId isn't separately double-linked. No
+`dangerouslySetInnerHTML` anywhere — text is split and only the matched spans become `<Link>`/`<a>` elements.
+
+### Added — dummy data
+`backend/prisma/seed.ts`: two Task sub-tasks under ATLAS's "Integrate new payment gateway" ticket, and a
+comment on it that references the SSO ticket by displayId — so both the sub-task panel and comment
+auto-linking show real, clickable data on a fresh seed.
+
 ## 2026-08-03 — Timesheet Team overview: KPI summary at the top
 
 User feedback right after the Team overview shipped: the per-person table was there, but there was no total —

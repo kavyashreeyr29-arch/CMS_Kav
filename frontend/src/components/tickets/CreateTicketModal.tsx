@@ -54,9 +54,15 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
   defaultProjectCode?: string;
+  // "Create sub-task" from a ticket's own detail page — when set, the modal
+  // fixes the parent (no Epic picker, project locked to the parent's) rather
+  // than the normal "optionally attach a Story to an Epic" flow, and applies
+  // regardless of ticket type (a sub-task isn't restricted to Story/Epic the
+  // way the Epic picker below is).
+  subtaskOf?: { id: string; displayId: string; title: string; projectCode: string };
 }
 
-export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Props) {
+export function CreateTicketModal({ onClose, onCreated, defaultProjectCode, subtaskOf }: Props) {
   const { permissions, user } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -71,7 +77,7 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
   const [stagedFiles, setStagedFiles] = useState<UploadedFileMeta[]>([]);
 
   const [form, setForm] = useState({
-    projectCode: defaultProjectCode ?? '',
+    projectCode: subtaskOf?.projectCode ?? defaultProjectCode ?? '',
     title: '',
     description: '',
     type: 'Task',
@@ -118,14 +124,15 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
   }, [slaPolicies, projects, form.projectCode, form.priority]);
 
   // Parent-Epic picker only makes sense for a Story, and only within the
-  // same project (a Story can't belong to another project's Epic).
+  // same project (a Story can't belong to another project's Epic) — not
+  // shown at all in sub-task mode, where the parent is already fixed.
   useEffect(() => {
-    if (form.type !== 'Story' || !form.projectCode) {
+    if (subtaskOf || form.type !== 'Story' || !form.projectCode) {
       setEpics([]);
       return;
     }
     ticketsApi.list({ project: form.projectCode, type: 'Epic', pageSize: 100 }).then((res) => setEpics(res.data));
-  }, [form.type, form.projectCode]);
+  }, [subtaskOf, form.type, form.projectCode]);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -163,7 +170,7 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
         labelId: form.labelId || undefined,
         assigneeUserId: form.assigneeUserId || undefined,
         dueDate: form.dueDate || undefined,
-        parentTicketId: form.type === 'Story' && form.parentTicketId ? form.parentTicketId : undefined,
+        parentTicketId: subtaskOf ? subtaskOf.id : (form.type === 'Story' && form.parentTicketId ? form.parentTicketId : undefined),
         watcherUserIds: form.watcherUserIds.length ? form.watcherUserIds : undefined,
       });
       const ticketId = (ticket as { id: string }).id;
@@ -181,10 +188,15 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
     <div className="overlay" onClick={onClose}>
       <div className="modal w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div className="modal-title">New ticket</div>
+          <div className="modal-title">{subtaskOf ? 'New sub-task' : 'New ticket'}</div>
           <button className="modal-close" onClick={onClose} aria-label="Close"><X size={15} /></button>
         </div>
         <div className="modal-body">
+          {subtaskOf && (
+            <div className="field-note" style={{ marginBottom: 12 }}>
+              Sub-task of <span className="tid">{subtaskOf.displayId}</span> — {subtaskOf.title}
+            </div>
+          )}
           <div className="field full">
             <label htmlFor="ct-title">Title</label>
             <input id="ct-title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Checkout fails on Safari with saved cards" />
@@ -196,9 +208,13 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
           <div className="form-grid">
             <div className="field">
               <label htmlFor="ct-project">Project</label>
-              <select id="ct-project" value={form.projectCode} onChange={(e) => set('projectCode', e.target.value)}>
-                {projects.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
-              </select>
+              {subtaskOf ? (
+                <input id="ct-project" value={subtaskOf.projectCode} disabled style={{ background: 'var(--surface-2)', color: 'var(--ink-soft)' }} />
+              ) : (
+                <select id="ct-project" value={form.projectCode} onChange={(e) => set('projectCode', e.target.value)}>
+                  {projects.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+                </select>
+              )}
             </div>
             <div className="field">
               <label htmlFor="ct-source">Raised via</label>
@@ -230,7 +246,7 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode }: Pr
                 {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            {form.type === 'Story' && (
+            {!subtaskOf && form.type === 'Story' && (
               <div className="field">
                 <label htmlFor="ct-parent-epic">Parent Epic</label>
                 <select id="ct-parent-epic" value={form.parentTicketId} onChange={(e) => set('parentTicketId', e.target.value)}>

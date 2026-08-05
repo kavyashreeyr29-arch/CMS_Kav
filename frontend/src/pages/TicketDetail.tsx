@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Activity, Clock, Edit3, History, Layers, MessageSquare, Paperclip, PlayCircle,
-  RotateCcw, Send, StopCircle, Timer, Users as UsersIcon, X,
+  Activity, Check, Clock, Copy, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
+  RotateCcw, Send, StopCircle, Timer, Unlink, Users as UsersIcon, X,
 } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { usersApi, UserRow } from '../api/users';
@@ -15,9 +15,11 @@ import { SlaBadge } from '../components/ui/SlaBadge';
 import { AttachmentUploader } from '../components/ui/AttachmentUploader';
 import { AttachmentGrid } from '../components/ui/AttachmentGrid';
 import { formatDuration } from '../components/ui/formatDuration';
+import { Linkify } from '../components/ui/Linkify';
 import { QaTestCasesPanel } from '../components/tickets/QaTestCasesPanel';
 import { DevelopmentPanel } from '../components/tickets/DevelopmentPanel';
 import { ApprovalsPanel } from '../components/tickets/ApprovalsPanel';
+import { CreateTicketModal } from '../components/tickets/CreateTicketModal';
 import { workflowApi, WorkflowTransitionRow } from '../api/workflow';
 import { ActivityEntry, FieldChange, Ticket } from '../types/ticket';
 
@@ -54,6 +56,8 @@ export function TicketDetail() {
   const [busy, setBusy] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [showSubtaskModal, setShowSubtaskModal] = useState(false);
 
   function load() {
     if (!id) return;
@@ -109,6 +113,11 @@ export function TicketDetail() {
   const generalAttachments = (ticket.attachments ?? []).filter((a) => a.context !== 'qa');
   const qaAttachments = (ticket.attachments ?? []).filter((a) => a.context === 'qa');
   const canManageQa = permissions.scope === 'all' || permissions.scope === 'team';
+  // Creating sub-tasks / detaching from a parent is a structural change, not
+  // a field edit — same internal-delivery-role gate as QA management rather
+  // than canEdit's Open-only status restriction, since re-parenting a ticket
+  // makes sense at any point in its lifecycle.
+  const canManageStructure = permissions.scope === 'all' || permissions.scope === 'team';
 
   function startEdit() {
     setEditForm({
@@ -208,6 +217,30 @@ export function TicketDetail() {
     }
   }
 
+  // Copies a displayId-based URL rather than the current (UUID-based)
+  // window.location.href — shorter and human-readable when pasted into
+  // another ticket's comment, and resolves the same way since
+  // GET /tickets/:id now accepts either form (tickets.service.ts findOne).
+  function copyLink() {
+    const url = `${window.location.origin}/tickets/${ticket!.displayId}`;
+    navigator.clipboard?.writeText(url);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
+  async function convertToStandalone() {
+    if (!id) return;
+    setBusy(true);
+    try {
+      await ticketsApi.linkParent(id, null);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not convert this ticket.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="ticket-detail-layout">
       <div className="ticket-detail-main panel">
@@ -217,6 +250,9 @@ export function TicketDetail() {
             <SlaBadge slaBreached={ticket.slaBreached} slaBreachRisk={ticket.slaBreachRisk} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn-ghost" onClick={copyLink} title="Copy a link to this ticket">
+              {linkCopied ? <><Check size={13} style={{ marginRight: 5 }} />Copied</> : <><Copy size={13} style={{ marginRight: 5 }} />Copy link</>}
+            </button>
             {canEdit && !editMode && (
               <button className="btn-ghost" onClick={startEdit}><Edit3 size={13} style={{ marginRight: 5 }} />Edit</button>
             )}
@@ -255,25 +291,40 @@ export function TicketDetail() {
                 Title and description are locked once work has moved past Open — add a comment for further changes.
               </div>
             )}
-            {ticket.description && <div className="td-desc">{ticket.description}</div>}
+            {ticket.description && <div className="td-desc"><Linkify text={ticket.description} /></div>}
           </>
         )}
 
         {ticket.parent && (
-          <div style={{ marginBottom: 12, fontSize: 11.5, color: 'var(--ink-soft)' }}>
-            Part of: <span className="tid" style={{ cursor: 'pointer' }} onClick={() => navigate(`/tickets/${ticket.parent!.id}`)}>{ticket.parent.displayId}</span> — {ticket.parent.title}
+          <div className="td-parent-info" style={{ marginBottom: 12, fontSize: 11.5, color: 'var(--ink-soft)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>
+              Part of: <span className="tid" style={{ cursor: 'pointer' }} onClick={() => navigate(`/tickets/${ticket.parent!.id}`)}>{ticket.parent.displayId}</span> — {ticket.parent.title}
+            </span>
+            {canManageStructure && (
+              <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 10.5 }} onClick={convertToStandalone} disabled={busy} title="Remove this ticket from its parent">
+                <Unlink size={11} style={{ marginRight: 4 }} />Convert to standalone ticket
+              </button>
+            )}
           </div>
         )}
 
-        {(ticket.children?.length ?? 0) > 0 && (
+        {(canManageStructure || (ticket.children?.length ?? 0) > 0) && (
           <div style={{ marginBottom: 18 }}>
-            <div className="td-section-title"><Layers size={13} />Sub-tasks ({ticket.children!.length})</div>
-            {ticket.children!.map((c) => (
+            <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Layers size={13} />Sub-tasks ({ticket.children?.length ?? 0})</span>
+              {canManageStructure && (
+                <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 10.5 }} onClick={() => setShowSubtaskModal(true)}>
+                  <GitBranchPlus size={11} style={{ marginRight: 4 }} />Add sub-task
+                </button>
+              )}
+            </div>
+            {ticket.children?.map((c) => (
               <div key={c.id} className="timeline-item" style={{ cursor: 'pointer' }} onClick={() => navigate(`/tickets/${c.id}`)}>
                 <div className="timeline-dot" />
                 <div><span className="tid">{c.displayId}</span> {c.title} {c.status && <span className="activity-time">· {formatStatus(c.status)}</span>}</div>
               </div>
             ))}
+            {(ticket.children?.length ?? 0) === 0 && <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>No sub-tasks yet.</div>}
           </div>
         )}
 
@@ -308,7 +359,7 @@ export function TicketDetail() {
               <div className="activity-avatar">{(c.author?.name ?? '?').split(' ').map((s) => s[0]).join('').slice(0, 2)}</div>
               <div className="comment-body">
                 <span className="comment-author">{c.author?.name}<span className="comment-time">{new Date(c.createdAt).toLocaleString()}</span></span>
-                <div className="comment-text">{c.body}</div>
+                <div className="comment-text"><Linkify text={c.body} /></div>
               </div>
             </div>
           ))}
@@ -505,6 +556,14 @@ export function TicketDetail() {
           ))}
         </div>
       </div>
+
+      {showSubtaskModal && (
+        <CreateTicketModal
+          onClose={() => setShowSubtaskModal(false)}
+          onCreated={load}
+          subtaskOf={{ id: ticket.id, displayId: ticket.displayId, title: ticket.title, projectCode: ticket.project?.code ?? '' }}
+        />
+      )}
     </div>
   );
 }

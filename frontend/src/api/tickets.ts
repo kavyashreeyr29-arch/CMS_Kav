@@ -24,6 +24,7 @@ export const ticketsApi = {
   reopen: (id: string) => api.post<Ticket>(`/tickets/${id}/reopen`),
   linkCampaign: (id: string, campaignId: string | null) => api.patch<Ticket>(`/tickets/${id}/campaign`, { campaignId }),
   linkReward: (id: string, rewardId: string | null) => api.patch<Ticket>(`/tickets/${id}/reward`, { rewardId }),
+  linkParent: (id: string, parentTicketId: string | null) => api.patch<Ticket>(`/tickets/${id}/parent`, { parentTicketId }),
   addComment: (id: string, body: string) => api.post<TicketComment>(`/tickets/${id}/comments`, { body }),
   requestAttachmentUploadUrl: (id: string, fileName: string) =>
     api.get<{ uploadUrl: string; storageKey: string }>(`/tickets/${id}/attachments/upload-url`, { fileName }),

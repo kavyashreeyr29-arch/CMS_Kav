@@ -155,9 +155,14 @@ export class TicketsService {
     };
   }
 
-  async findOne(id: string, user: AuthenticatedUser, perms: RolePermissions) {
+  // Accepts either the internal id (what every in-app navigation already
+  // uses) or the human-readable displayId (e.g. "ATLAS-1024") — lets a
+  // "copy link" URL and a bare displayId mentioned in a comment/description
+  // (see Linkify on the frontend) resolve to the same route without a
+  // separate lookup endpoint.
+  async findOne(idOrDisplayId: string, user: AuthenticatedUser, perms: RolePermissions) {
     const ticket = await this.prisma.ticket.findFirst({
-      where: { AND: [{ id }, ticketVisibilityWhere(user, perms)] },
+      where: { AND: [{ OR: [{ id: idOrDisplayId }, { displayId: idOrDisplayId }] }, ticketVisibilityWhere(user, perms)] },
       include: {
         ...TICKET_INCLUDE,
         customFields: true,
@@ -397,6 +402,36 @@ export class TicketsService {
     const ticket = await this.mustFindRaw(id, user, perms);
     const updated = await this.prisma.ticket.update({ where: { id }, data: { rewardId }, include: TICKET_INCLUDE });
     await this.recordFieldChange(id, user.id, 'Reward', ticket.rewardId, rewardId);
+    return serializeTicketForViewer(updated, perms);
+  }
+
+  /**
+   * "Convert to a standalone ticket" (parentTicketId: null) and, more
+   * generally, re-parenting a ticket after creation — CreateTicketDto
+   * already accepts parentTicketId up front, but there was previously no
+   * way to change it once a ticket existed.
+   */
+  async linkParent(id: string, user: AuthenticatedUser, perms: RolePermissions, parentTicketId: string | null) {
+    const ticket = await this.mustFindRaw(id, user, perms);
+    if (parentTicketId === id) {
+      throw new BadRequestException('A ticket cannot be its own parent');
+    }
+    if (parentTicketId) {
+      const parent = await this.prisma.ticket.findUnique({ where: { id: parentTicketId }, select: { id: true, parentTicketId: true } });
+      if (!parent) throw new BadRequestException('Parent ticket not found');
+      // Walk the prospective parent's own ancestor chain — if it ever
+      // reaches this ticket, linking would create a cycle.
+      let cursor = parent.parentTicketId;
+      let depth = 0;
+      while (cursor && depth < 50) {
+        if (cursor === id) throw new BadRequestException('That would create a circular parent/sub-task chain');
+        const next = await this.prisma.ticket.findUnique({ where: { id: cursor }, select: { parentTicketId: true } });
+        cursor = next?.parentTicketId ?? null;
+        depth++;
+      }
+    }
+    const updated = await this.prisma.ticket.update({ where: { id }, data: { parentTicketId }, include: TICKET_INCLUDE });
+    await this.recordFieldChange(id, user.id, 'Parent ticket', ticket.parentTicketId, parentTicketId);
     return serializeTicketForViewer(updated, perms);
   }
 
