@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import {
-  Folder, Gauge, Megaphone, MessageSquare, Gift, ListChecks, Ticket as TicketIcon, Users as UsersIcon, X, Edit3,
+  Folder, Gauge, Megaphone, MessageSquare, Gift, ListChecks, Ticket as TicketIcon, Users as UsersIcon, X, Edit3, Trash2,
 } from 'lucide-react';
 import { projectsApi } from '../api/projects';
 import { ticketsApi } from '../api/tickets';
 import { usersApi, UserRow } from '../api/users';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PrioChip, PRIORITY_COLOR, formatStatus } from '../components/ui/Chips';
 import { Project, PROJECT_STATUSES } from '../types/project';
 import { Ticket } from '../types/ticket';
@@ -52,6 +53,9 @@ export function ProjectDetail() {
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   function load() {
     if (!code) return;
@@ -141,6 +145,18 @@ export function ProjectDetail() {
     }
   }
 
+  async function remove() {
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await projectsApi.remove(project!.code);
+      navigate('/projects');
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete project.');
+      setDeleteBusy(false);
+    }
+  }
+
   return (
     <div className="panel" style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -153,6 +169,11 @@ export function ProjectDetail() {
             <button className="btn-ghost" onClick={startEdit}><Edit3 size={13} style={{ marginRight: 5 }} />Edit</button>
           )}
           <button className="btn-ghost" onClick={viewInDashboard}><Gauge size={13} style={{ marginRight: 5 }} />View in dashboard</button>
+          {permissions?.userManagement && (
+            <button className="btn-destructive" data-testid="pd-delete-project" onClick={() => setConfirmingDelete(true)} title="Delete project">
+              <Trash2 size={13} />
+            </button>
+          )}
           <button className="modal-close" onClick={() => navigate('/projects')} aria-label="Close"><X size={15} /></button>
         </div>
       </div>
@@ -289,6 +310,21 @@ export function ProjectDetail() {
       {tab === 'communication' && <ProjectCommunicationTab project={project} onChange={load} />}
       {tab === 'rewards' && <ProjectRewardsTab project={project} tickets={allTickets} onChange={load} />}
       {tab === 'todo' && <ProjectTodoTab project={project} users={users} onChange={load} />}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`Delete ${project.code}?`}
+          body={
+            allTickets.length > 0
+              ? `This project still has ${allTickets.length} ticket${allTickets.length === 1 ? '' : 's'} — move or delete them first, then retry.`
+              : 'This removes the project and its documents, campaigns, rewards, to-dos, and notes. This can\'t be undone.'
+          }
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }

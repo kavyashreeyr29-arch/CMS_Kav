@@ -47,6 +47,12 @@ export class ProjectsController {
     return this.projectsService.update(code.toUpperCase(), dto);
   }
 
+  @RequirePermission('userManagement')
+  @Delete(':code')
+  remove(@Param('code') code: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.remove(code.toUpperCase(), user);
+  }
+
   @Get(':code/documents/upload-url')
   requestUploadUrl(@Param('code') code: string, @Query('fileName') fileName: string) {
     return this.projectsService.requestDocumentUploadUrl(fileName, code.toUpperCase());

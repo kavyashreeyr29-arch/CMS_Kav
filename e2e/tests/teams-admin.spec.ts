@@ -45,5 +45,13 @@ test.describe('Teams admin', () => {
     await page.locator('.modal #team-name').fill(renamed);
     await page.locator('.modal-foot .btn-primary', { hasText: 'Save changes' }).click();
     await expect(page.getByText(renamed)).toBeVisible({ timeout: 10000 });
+
+    // Clean up — this test's own debris shouldn't accumulate across runs
+    // (admin-delete.spec.ts covers the delete feature itself in depth).
+    await page.locator('.panel', { hasText: renamed }).click();
+    await page.locator('.modal-foot .btn-destructive', { hasText: 'Delete team' }).click();
+    await page.locator('.overlay .modal .btn-destructive', { hasText: 'Delete' }).last().click();
+    await expect(page.locator('.modal-title')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('.panel', { hasText: renamed })).toHaveCount(0);
   });
 });

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Download, Plus, Users as UsersIcon, X } from 'lucide-react';
+import { Download, Plus, Trash2, Users as UsersIcon, X } from 'lucide-react';
 import { teamsApi, TeamRow } from '../api/teams';
 import { usersApi, UserRow } from '../api/users';
 import { ApiError } from '../api/client';
 import { exportToCsv } from '../components/ui/exportCsv';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { useAuth } from '../auth/AuthContext';
 
 // Admin-configurable Teams (CHANGELOG.md "admin should be able to create
 // teams") — Team is what drives the 'team' permission scope (Lead/Manager
@@ -73,11 +75,14 @@ export function TeamsAdmin() {
 function TeamModal({ team, users, onClose, onSaved }: {
   team: TeamRow | null; users: UserRow[]; onClose: () => void; onSaved: () => void;
 }) {
+  const { permissions } = useAuth();
   const [name, setName] = useState(team?.name ?? '');
   const [leadUserId, setLeadUserId] = useState(team?.leadUserId ?? '');
   const [memberUserIds, setMemberUserIds] = useState<string[]>(team?.memberships.map((m) => m.userId) ?? []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   function toggleMember(userId: string) {
     setMemberUserIds((ids) => (ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId]));
@@ -98,6 +103,19 @@ function TeamModal({ team, users, onClose, onSaved }: {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save team.');
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!team) return;
+    setBusy(true);
+    setDeleteError('');
+    try {
+      await teamsApi.remove(team.id);
+      onSaved();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete team.');
       setBusy(false);
     }
   }
@@ -142,12 +160,27 @@ function TeamModal({ team, users, onClose, onSaved }: {
           {error && <div className="field-error">{error}</div>}
         </div>
         <div className="modal-foot">
+          {team && permissions?.userManagement && (
+            <button className="btn-destructive" style={{ marginRight: 'auto' }} onClick={() => setConfirmingDelete(true)} disabled={busy}>
+              <Trash2 size={13} />Delete team
+            </button>
+          )}
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={submit} disabled={busy}>
             <Plus size={14} />{busy ? 'Saving…' : team ? 'Save changes' : 'Create team'}
           </button>
         </div>
       </div>
+      {confirmingDelete && team && (
+        <ConfirmDialog
+          title={`Delete ${team.name}?`}
+          body={`This removes the team and its ${team.memberships.length} membership${team.memberships.length === 1 ? '' : 's'}. Projects it led keep existing, just unassigned. This can't be undone.`}
+          busy={busy}
+          error={deleteError}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }

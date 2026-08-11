@@ -3,6 +3,41 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-11 — Admin-only delete for Teams, Tickets, and Projects
+
+Labels already had a delete option (soft-delete, gated on `manageLabels`); Teams, Tickets, and Projects
+didn't have one at all. Delete is a flat role-permission gate (`userManagement` — the same key Team
+create/update already used), not "only rows an admin created": neither `Team` nor `Project` track a
+creator field in the schema, and every existing admin-style gate in this app (`userManagement`,
+`manageLabels`, `manageRoles`) is a role capability check, never an ownership check.
+
+### Added — `DELETE` endpoints
+- `DELETE /teams/:id` — hard delete. Memberships cascade; any project the team led just goes unassigned
+  (`Project.teamId` → null), it isn't touched.
+- `DELETE /tickets/:id` — hard delete. Comments/attachments/custom fields/change history/test cases/PRs/
+  approval requests/time entries all cascade per `schema.prisma`; `ActivityLogEntry`/`Notification` rows
+  referencing the ticket just lose the link rather than being deleted. Recorded in the org-level audit
+  trail (`ticket.deleted`) since the ticket's own history disappears with it — `TicketsController` didn't
+  use `PermissionsGuard` anywhere else, so this route adds it at the method level rather than the class.
+- `DELETE /projects/:code` — blocked with a friendly `409` (not a raw FK-violation `500`) while the
+  project still has tickets: `Ticket.projectId` is a required FK with no cascade, so Postgres would already
+  reject it — this just surfaces that as a readable message before hitting the DB. Everything else
+  attached to a project (documents, members, campaigns, rewards, to-dos, notes) cascades cleanly.
+- All three gated `@RequirePermission('userManagement')` and audit-logged (`team.deleted`/`ticket.deleted`/
+  `project.deleted`), matching the existing Team create/update pattern.
+
+### Added — confirm dialog (first one in the app)
+No destructive action anywhere previously had a confirm step (label/business-category remove both fire
+immediately). A hard delete with real cascading data loss warranted one — new shared
+`components/ui/ConfirmDialog.tsx`, used by all three new delete flows: Teams admin (button in the edit
+modal's footer), Ticket detail (trash icon in the header actions), Project detail (trash icon in the
+header actions). All three buttons are admin-only (`permissions.userManagement`), matching the backend gate.
+
+### Fixed — recurring Teams-admin test debris
+`teams-admin.spec.ts` created a team on every run and never deleted it, leaving ~25 "E2E Team ... Renamed"
+rows cluttering the Teams page over the life of this session. Now deletes what it creates as its last
+step, exercising the new delete feature at the same time.
+
 ## 2026-08-10 — Full sanity pass: seed-data gaps, 2 real bugs, CSV export everywhere, cycle-time analytics
 
 User request: check for other errors, test end-to-end, explain what the Workflow module does, fill in seed data

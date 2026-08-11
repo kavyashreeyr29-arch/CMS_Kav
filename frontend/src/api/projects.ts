@@ -6,6 +6,7 @@ export const projectsApi = {
   get: (code: string) => api.get<Project>(`/projects/${code}`),
   create: (body: Record<string, unknown>) => api.post<Project>('/projects', body),
   update: (code: string, body: Record<string, unknown>) => api.patch<Project>(`/projects/${code}`, body),
+  remove: (code: string) => api.delete(`/projects/${code}`),
   requestDocumentUploadUrl: (code: string, fileName: string) =>
     api.get<{ uploadUrl: string; storageKey: string }>(`/projects/${code}/documents/upload-url`, { fileName }),
   addDocument: (code: string, doc: { fileName: string; fileSize: number; mimeKind: string; storageKey: string; section?: string; campaignId?: string; rewardId?: string }) =>

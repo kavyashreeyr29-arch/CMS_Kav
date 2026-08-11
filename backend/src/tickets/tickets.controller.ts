@@ -13,6 +13,8 @@ import { AddCommentDto } from './dto/add-comment.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
 import { AddWatcherDto } from './dto/add-watcher.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser, effectivePermissions } from '../common/permissions/effective-permissions';
 
@@ -39,6 +41,13 @@ export class TicketsController {
   @Get(':id/field-changes')
   fieldChanges(@Param('id') id: string) {
     return this.ticketsService.fieldChangeLog(id);
+  }
+
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('userManagement')
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.remove(id, user, effectivePermissions(user));
   }
 
   @Patch(':id')

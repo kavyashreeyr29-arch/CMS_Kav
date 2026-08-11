@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { TimersGateway } from '../realtime/timers.gateway';
 import { WorkflowService } from '../workflow/workflow.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { RolePermissions } from '../common/permissions/role-permissions';
 import { serializeTicketForViewer, ticketVisibilityWhere } from '../common/permissions/ticket-scope';
@@ -73,6 +74,7 @@ export class TicketsService {
     private readonly activityLog: ActivityLogService,
     private readonly timersGateway: TimersGateway,
     private readonly workflow: WorkflowService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async findAll(user: AuthenticatedUser, perms: RolePermissions, query: QueryTicketsDto) {
@@ -494,6 +496,25 @@ export class TicketsService {
     }
 
     return serializeTicketForViewer(updated, perms);
+  }
+
+  /**
+   * Admin-only hard delete. Comments/attachments/custom fields/field-change
+   * history/test cases/PRs/approval requests/time entries all cascade via
+   * schema.prisma; ActivityLogEntry/Notification rows referencing this
+   * ticket just lose the link (ticketId → null) rather than being deleted,
+   * so a record that "something happened" survives even once the ticket
+   * itself is gone. Recorded in the org-level audit trail for the same
+   * reason — the ticket's own history disappears with it.
+   */
+  async remove(id: string, user: AuthenticatedUser, perms: RolePermissions) {
+    const ticket = await this.mustFindRaw(id, user, perms);
+    await this.prisma.ticket.delete({ where: { id } });
+    await this.auditLog.record({
+      orgId: user.orgId, actorUserId: user.id, action: 'ticket.deleted',
+      targetType: 'Ticket', targetId: ticket.id, targetLabel: `${ticket.displayId} — ${ticket.title}`,
+    });
+    return { success: true };
   }
 
   async addComment(id: string, user: AuthenticatedUser, perms: RolePermissions, dto: AddCommentDto) {

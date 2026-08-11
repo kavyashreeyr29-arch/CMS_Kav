@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TeamsService } from './teams.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -33,5 +33,11 @@ export class TeamsController {
   @Patch(':id')
   update(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateTeamDto) {
     return this.teamsService.update(id, dto, actor);
+  }
+
+  @RequirePermission('userManagement')
+  @Delete(':id')
+  remove(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) {
+    return this.teamsService.remove(id, actor);
   }
 }

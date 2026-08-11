@@ -22,6 +22,7 @@ export const ticketsApi = {
   updateStatus: (id: string, status: string) => api.patch<Ticket>(`/tickets/${id}/status`, { status }),
   updateBacklogRank: (id: string, backlogRank: number) => api.patch<Ticket>(`/tickets/${id}/backlog-rank`, { backlogRank }),
   reopen: (id: string) => api.post<Ticket>(`/tickets/${id}/reopen`),
+  remove: (id: string) => api.delete(`/tickets/${id}`),
   linkCampaign: (id: string, campaignId: string | null) => api.patch<Ticket>(`/tickets/${id}/campaign`, { campaignId }),
   linkReward: (id: string, rewardId: string | null) => api.patch<Ticket>(`/tickets/${id}/reward`, { rewardId }),
   linkParent: (id: string, parentTicketId: string | null) => api.patch<Ticket>(`/tickets/${id}/parent`, { parentTicketId }),

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -8,6 +8,7 @@ import { AddDocumentDto } from './dto/add-document.dto';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
 import { RolePermissions } from '../common/permissions/role-permissions';
 import { SAFE_USER_SELECT } from '../common/prisma/safe-user-select';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 const OPEN_STATUSES: TicketStatus[] = [
   TicketStatus.Open,
@@ -30,6 +31,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async findAll(user: AuthenticatedUser, perms: RolePermissions) {
@@ -145,6 +147,29 @@ export class ProjectsService {
       },
       include: { pm: { select: SAFE_USER_SELECT }, team: true, documents: true },
     });
+  }
+
+  /**
+   * Admin-only. `Ticket.projectId` is a required FK with no cascade
+   * (schema.prisma), so Postgres would already reject this while any
+   * ticket remains — checked up front here for a readable error instead of
+   * a raw FK-violation 500. Everything else attached to a project
+   * (documents, members, campaigns, rewards, to-dos, notes) cascades.
+   */
+  async remove(code: string, actor: AuthenticatedUser) {
+    const project = await this.findOne(code);
+    const ticketCount = await this.prisma.ticket.count({ where: { projectId: project.id } });
+    if (ticketCount > 0) {
+      throw new ConflictException(
+        `Cannot delete ${project.code} — it still has ${ticketCount} ticket${ticketCount === 1 ? '' : 's'}. Move or delete them first.`,
+      );
+    }
+    await this.prisma.project.delete({ where: { id: project.id } });
+    await this.auditLog.record({
+      orgId: actor.orgId, actorUserId: actor.id, action: 'project.deleted',
+      targetType: 'Project', targetId: project.id, targetLabel: `${project.code} — ${project.name}`,
+    });
+    return { success: true };
   }
 
   async addDocument(code: string, uploadedBy: string, dto: AddDocumentDto) {

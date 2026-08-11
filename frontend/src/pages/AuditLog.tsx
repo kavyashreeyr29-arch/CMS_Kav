@@ -14,6 +14,9 @@ const ACTION_LABEL: Record<string, string> = {
   'role.permissions_updated': 'Role permissions updated',
   'team.created': 'Team created',
   'team.updated': 'Team updated',
+  'team.deleted': 'Team deleted',
+  'ticket.deleted': 'Ticket deleted',
+  'project.deleted': 'Project deleted',
 };
 
 const ACTION_TONE: Record<string, string> = {
@@ -25,6 +28,9 @@ const ACTION_TONE: Record<string, string> = {
   'role.permissions_updated': 'var(--medium)',
   'user.updated': 'var(--medium)',
   'team.updated': 'var(--medium)',
+  'team.deleted': 'var(--critical)',
+  'ticket.deleted': 'var(--critical)',
+  'project.deleted': 'var(--critical)',
 };
 
 function formatValue(v: unknown): string {

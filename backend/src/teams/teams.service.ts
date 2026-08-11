@@ -86,4 +86,17 @@ export class TeamsService {
     }
     return team;
   }
+
+  async remove(id: string, actor: AuthenticatedUser) {
+    const team = await this.findOne(id);
+    // Projects assigned to this team keep existing (Project.teamId just
+    // goes null, per schema.prisma's implicit SetNull) — deleting a team
+    // is a roster change, not a reason to touch the projects it led.
+    await this.prisma.team.delete({ where: { id } });
+    await this.auditLog.record({
+      orgId: actor.orgId, actorUserId: actor.id, action: 'team.deleted',
+      targetType: 'Team', targetId: team.id, targetLabel: team.name,
+    });
+    return { success: true };
+  }
 }

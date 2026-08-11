@@ -16,4 +16,5 @@ export const teamsApi = {
     api.post<TeamRow>('/teams', body),
   update: (id: string, body: { name?: string; leadUserId?: string | null; memberUserIds?: string[] }) =>
     api.patch<TeamRow>(`/teams/${id}`, body),
+  remove: (id: string) => api.delete(`/teams/${id}`),
 };

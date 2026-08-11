@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Check, Clock, Copy, Download, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
-  RotateCcw, Send, StopCircle, Timer, Unlink, Users as UsersIcon, X,
+  RotateCcw, Send, StopCircle, Timer, Trash2, Unlink, Users as UsersIcon, X,
 } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { usersApi, UserRow } from '../api/users';
@@ -17,6 +17,7 @@ import { AttachmentGrid } from '../components/ui/AttachmentGrid';
 import { formatDuration } from '../components/ui/formatDuration';
 import { Linkify } from '../components/ui/Linkify';
 import { exportToCsv } from '../components/ui/exportCsv';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { QaTestCasesPanel } from '../components/tickets/QaTestCasesPanel';
 import { DevelopmentPanel } from '../components/tickets/DevelopmentPanel';
 import { ApprovalsPanel } from '../components/tickets/ApprovalsPanel';
@@ -59,6 +60,8 @@ export function TicketDetail() {
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showSubtaskModal, setShowSubtaskModal] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   function load() {
     if (!id) return;
@@ -222,6 +225,19 @@ export function TicketDetail() {
   // window.location.href — shorter and human-readable when pasted into
   // another ticket's comment, and resolves the same way since
   // GET /tickets/:id now accepts either form (tickets.service.ts findOne).
+  async function remove() {
+    if (!id) return;
+    setBusy(true);
+    setDeleteError('');
+    try {
+      await ticketsApi.remove(id);
+      navigate(-1);
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete ticket.');
+      setBusy(false);
+    }
+  }
+
   function copyLink() {
     const url = `${window.location.origin}/tickets/${ticket!.displayId}`;
     navigator.clipboard?.writeText(url);
@@ -278,6 +294,11 @@ export function TicketDetail() {
             </button>
             {canEdit && !editMode && (
               <button className="btn-ghost" onClick={startEdit}><Edit3 size={13} style={{ marginRight: 5 }} />Edit</button>
+            )}
+            {permissions.userManagement && (
+              <button className="btn-destructive" data-testid="td-delete-ticket" onClick={() => setConfirmingDelete(true)} title="Delete ticket">
+                <Trash2 size={13} />
+              </button>
             )}
             <button className="modal-close" onClick={() => navigate(-1)} aria-label="Close"><X size={15} /></button>
           </div>
@@ -594,6 +615,16 @@ export function TicketDetail() {
           onClose={() => setShowSubtaskModal(false)}
           onCreated={load}
           subtaskOf={{ id: ticket.id, displayId: ticket.displayId, title: ticket.title, projectCode: ticket.project?.code ?? '' }}
+        />
+      )}
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`Delete ${ticket.displayId}?`}
+          body="This permanently removes the ticket along with its comments, attachments, PRs, approvals, and time entries. This can't be undone."
+          busy={busy}
+          error={deleteError}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
         />
       )}
     </div>
