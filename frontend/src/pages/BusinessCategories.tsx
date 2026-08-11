@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, Tag, Trash2 } from 'lucide-react';
+import { Download, Plus, Tag, Trash2 } from 'lucide-react';
 import { businessCategoriesApi, BusinessCategoryRow } from '../api/businessCategories';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 // Was a fixed 3-value list (InnovateX/ElevatozX/AccquareX) hardcoded in both
 // the Prisma enum and every form that used it — now an admin-manageable
@@ -27,6 +28,9 @@ export function BusinessCategories() {
     await businessCategoriesApi.remove(id);
     load();
   }
+  function exportCategories() {
+    exportToCsv('business-categories', ['Category'], categories.map((c) => [c.name]));
+  }
 
   if (loading) return <div className="loading-state">Loading business categories…</div>;
 
@@ -37,6 +41,7 @@ export function BusinessCategories() {
           <div className="panel-title">Business categories</div>
           <div className="panel-sub">Which business line a ticket's work belongs to — required at creation for Customer Success, PM, and Developer roles, tracked in the Analytics hours-by-category breakdown</div>
         </div>
+        <button className="btn-ghost" onClick={exportCategories} disabled={categories.length === 0}><Download size={13} />CSV</button>
       </div>
       <div className="filter-bar" style={{ marginBottom: 16 }}>
         <input

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, MessageCircleWarning, Send, Clock, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, MessageCircleWarning, Send, Clock, ShieldCheck, Download } from 'lucide-react';
 import { approvalsApi } from '../../api/approvals';
 import { ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { exportToCsv } from '../ui/exportCsv';
 import { ApprovalRequest } from '../../types/ticket';
 import { UserRow } from '../../api/users';
 
@@ -103,9 +104,23 @@ export function ApprovalsPanel({ ticketId, users, suggestedLabel }: Props) {
 
   const pending = requests.find((r) => r.decision === 'pending');
 
+  function exportRequests() {
+    exportToCsv(
+      'approvals',
+      ['Label', 'Requested by', 'Approver', 'Decision', 'Request note', 'Decision comment', 'Requested at', 'Decided at'],
+      requests.map((r) => [
+        r.label, r.requestedBy.name, r.approver?.name ?? r.approverRoleId ?? '', r.decision,
+        r.requestNote ?? '', r.decisionComment ?? '', new Date(r.createdAt).toLocaleString(), r.decidedAt ? new Date(r.decidedAt).toLocaleString() : '',
+      ]),
+    );
+  }
+
   return (
     <div className="panel" data-testid="approvals-panel">
-      <div className="td-section-title"><ShieldCheck size={13} />Approvals ({requests.length})</div>
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShieldCheck size={13} />Approvals ({requests.length})</span>
+        <button className="btn-ghost" onClick={exportRequests} disabled={requests.length === 0}><Download size={11} />CSV</button>
+      </div>
 
       {!showForm && (
         <button className="select-pill" onClick={openForm} style={{ marginBottom: 12 }}>

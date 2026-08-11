@@ -1,10 +1,36 @@
 // Seeds a demo dataset mirroring docs/prototype/pulse-dashboard.jsx so the
 // real app has something to look at immediately. Run with `npm run seed`
 // after `npm run prisma:push`.
-import { Prisma, PrismaClient, Priority, ProjectStatus, TicketSource, TicketStatus, TicketType, TimeEntrySource } from '@prisma/client';
+import { Prisma, PrismaClient, Priority, ProjectStatus, TicketSource, TicketStatus, TicketType, TimeEntrySource, AIProviderType, AIFeature, MimeKind } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomBytes, randomUUID } from 'crypto';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { encryptApiKey } from '../src/ai/crypto.util';
 
 const prisma = new PrismaClient();
+
+// Real object storage upload for seeded documents (Docs & Files, SLA policy
+// attachments) — a storageKey pointing at nothing would make "Download"
+// error out for anyone clicking it, which is worse than no seed data at all.
+// Uses the Docker-internal MinIO address (`minio:9000`), not the browser-
+// facing S3_ENDPOINT env var (`localhost:9000`) — this script runs inside
+// the backend container, which can't reach the host's loopback.
+const S3_BUCKET = process.env.S3_BUCKET ?? 'elevatohub-attachments';
+const s3 = new S3Client({
+  endpoint: 'http://minio:9000',
+  region: process.env.S3_REGION ?? 'us-east-1',
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY ?? 'elevatohub',
+    secretAccessKey: process.env.S3_SECRET_KEY ?? 'elevatohub123',
+  },
+});
+async function seedDocument(scope: 'projects' | 'sla-policies', ownerId: string, fileName: string, content: string): Promise<{ storageKey: string; fileSize: number }> {
+  const storageKey = `${scope}/${ownerId}/${randomUUID()}-${fileName}`;
+  const body = Buffer.from(content, 'utf8');
+  await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: storageKey, Body: body, ContentType: 'text/plain' }));
+  return { storageKey, fileSize: body.byteLength };
+}
 
 const ROLE_SEED = [
   { id: 'admin', key: 'admin', label: 'Admin', group: 'Full access', defaultScope: 'all' },
@@ -144,6 +170,16 @@ const CREATED_DAYS_AGO = [2, 4, 7, 9, 13, 18, 22, 28, 35, 42, 50, 60, 75, 95, 12
 // ticket's own age below. Deliberately spans every ageing bucket
 // (0-2d / 3-5d / 6-10d / 11-20d / 21d+) so the Dashboard heatmap isn't flat.
 const IDLE_DAYS_AGO = [0, 1, 3, 4, 7, 9, 14, 18, 25, 30];
+// Every "engineering delivery" status at least once per project — the old
+// 3-way ternary (Completed/InProgress/Open only) left Assigned/InReview/
+// Closed/Reopened permanently empty, so 3 of the Kanban's 11 status columns
+// never had a single seeded ticket to show the board actually works.
+const TICKET_STATUS_CYCLE: TicketStatus[] = [
+  TicketStatus.Open, TicketStatus.InProgress, TicketStatus.Assigned, TicketStatus.Completed,
+  TicketStatus.InReview, TicketStatus.Open, TicketStatus.QATesting, TicketStatus.InProgress,
+  TicketStatus.Closed, TicketStatus.Completed, TicketStatus.Reopened, TicketStatus.Open,
+];
+const RESOLVED_STATUSES: TicketStatus[] = [TicketStatus.Completed, TicketStatus.Closed];
 
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
@@ -339,13 +375,13 @@ async function main() {
       });
       const { source, reporter } = SOURCE_CYCLE[i % SOURCE_CYCLE.length];
       const assignee = [...userByName.values()][i % userByName.size];
-      const status = i % 5 === 0 ? TicketStatus.Completed : i % 3 === 0 ? TicketStatus.InProgress : TicketStatus.Open;
+      const status = TICKET_STATUS_CYCLE[i % TICKET_STATUS_CYCLE.length];
       const createdDaysAgo = CREATED_DAYS_AGO[i % CREATED_DAYS_AGO.length];
       const createdAt = daysAgo(createdDaysAgo);
       // Closed/completed tickets were "last touched" on some day between
       // creation and now (their resolution); still-open ones use the
       // dedicated idle spread so the ageing heatmap shows real variety.
-      const updatedAt = status === TicketStatus.Completed
+      const updatedAt = RESOLVED_STATUSES.includes(status)
         ? daysAgo(Math.max(0, Math.floor(createdDaysAgo / 2)))
         : daysAgo(Math.min(createdDaysAgo, IDLE_DAYS_AGO[(i + 3) % IDLE_DAYS_AGO.length]));
 
@@ -715,6 +751,159 @@ async function main() {
         },
       });
     }
+  }
+
+  // Recent activity (CHANGELOG.md) — seed.ts creates tickets directly via
+  // Prisma, bypassing TicketsService entirely, so the Dashboard "Recent
+  // activity" panel (backed by ActivityLogEntry, written only by the service
+  // layer on real API calls) was always empty on a fresh seed. A handful of
+  // realistic entries, spread across projects and recent enough to actually
+  // surface in the "last 8" the panel shows.
+  await prisma.activityLogEntry.deleteMany({ where: { ticket: { project: { code: { in: PROJECTS.map((p) => p.code) } } } } });
+  if (paymentGatewayTicket && atlasProject) {
+    await prisma.activityLogEntry.createMany({
+      data: [
+        { ticketId: paymentGatewayTicket.id, projectCode: 'ATLAS', actorUserId: userByName.get('S. Iyer')!, actionType: 'created', actionText: `created ${paymentGatewayTicket.displayId} via InternalPM`, createdAt: daysAgo(5) },
+        { ticketId: paymentGatewayTicket.id, projectCode: 'ATLAS', actorUserId: userByName.get('N. Rao')!, actionType: 'approval_decided', actionText: `approved "Commercial Approval" on ${paymentGatewayTicket.displayId}`, createdAt: daysAgo(3) },
+        { ticketId: paymentGatewayTicket.id, projectCode: 'ATLAS', actorUserId: userByName.get('P. Sharma')!, actionType: 'commented', actionText: `commented on ${paymentGatewayTicket.displayId}`, createdAt: daysAgo(1) },
+      ],
+    });
+  }
+  for (const cfg of [
+    { code: 'ORION', actor: 'A. Fernandes', daysAgo: 1 }, { code: 'NOVA', actor: 'S. Iyer', daysAgo: 2 },
+    { code: 'HELIX', actor: 'M. Thomas', daysAgo: 3 }, { code: 'ZEN', actor: 'F. Haddad', daysAgo: 0 },
+  ]) {
+    const t = seededTicketIds.find((s) => s.projectCode === cfg.code);
+    if (!t) continue;
+    const ticket = await prisma.ticket.findUnique({ where: { id: t.id }, select: { displayId: true } });
+    if (!ticket) continue;
+    await prisma.activityLogEntry.create({
+      data: {
+        ticketId: t.id, projectCode: cfg.code, actorUserId: userByName.get(cfg.actor)!,
+        actionType: 'commented', actionText: `commented on ${ticket.displayId}`, createdAt: daysAgo(cfg.daysAgo),
+      },
+    });
+  }
+
+  // Cycle time (CHANGELOG.md — "average time per status" Analytics panel) —
+  // synthesizes a plausible status-transition trail (TicketFieldChange,
+  // fieldName 'Status') for a handful of Completed tickets. seed.ts creates
+  // tickets directly at their final status with no transition history, so
+  // without this the new panel would be a permanent empty state on a fresh
+  // seed — a live install accumulates this on its own as tickets actually
+  // move through the workflow, seed data doesn't get that for free.
+  await prisma.ticketFieldChange.deleteMany({ where: { fieldName: 'Status', ticket: { project: { code: { in: PROJECTS.map((p) => p.code) } } } } });
+  const completedForCycleTime = seededTicketIds.filter((s) => s.status === TicketStatus.Completed).slice(0, 10);
+  const STAGE_JOURNEY: TicketStatus[] = [
+    TicketStatus.Open, TicketStatus.Assigned, TicketStatus.InProgress,
+    TicketStatus.InReview, TicketStatus.QATesting, TicketStatus.Completed,
+  ];
+  const STAGE_DAYS_AGO = [18, 16, 14, 6, 4, 1];
+  for (const t of completedForCycleTime) {
+    await prisma.ticketFieldChange.createMany({
+      data: STAGE_JOURNEY.map((status, i) => ({
+        ticketId: t.id, changedBy: userByName.get('P. Sharma')!, fieldName: 'Status',
+        oldValue: i === 0 ? null : STAGE_JOURNEY[i - 1], newValue: status,
+        changedAt: daysAgo(STAGE_DAYS_AGO[i]),
+      })),
+    });
+  }
+
+  // GitHub integration (CHANGELOG.md) — a connected demo repo so /github and
+  // the ticket Development panel show real linked-PR behavior instead of a
+  // bare "not connected" empty state on a fresh install.
+  await prisma.githubIntegration.deleteMany({ where: { orgId: org.id } });
+  const githubEncryptionSecret = process.env.GITHUB_ENCRYPTION_KEY ?? process.env.AI_ENCRYPTION_KEY ?? 'dev-fallback-key';
+  await prisma.githubIntegration.create({
+    data: {
+      orgId: org.id,
+      repoOwner: 'elevatozloyalty',
+      repoName: 'elevatohub-demo',
+      tokenEncrypted: encryptApiKey('ghp_demoDemoDemoDemoDemoDemoDemoDemo01', githubEncryptionSecret),
+      webhookSecret: randomBytes(24).toString('hex'),
+      autoTransition: true,
+      onPrOpenedStatus: TicketStatus.InReview,
+      onPrApprovedStatus: TicketStatus.InReview,
+      onPrMergedStatus: TicketStatus.QATesting,
+    },
+  });
+
+  // AI integrations (CHANGELOG.md) — one demo provider so /ai-providers
+  // isn't a bare empty state either.
+  await prisma.aiProviderConfig.deleteMany({ where: { orgId: org.id } });
+  await prisma.aiProviderConfig.create({
+    data: {
+      orgId: org.id,
+      providerType: AIProviderType.openai,
+      displayName: 'OpenAI (default)',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyEncrypted: encryptApiKey('sk-demoDemoDemoDemoDemoDemoDemoDemo01', process.env.AI_ENCRYPTION_KEY ?? 'dev-fallback-key'),
+      defaultModel: 'gpt-4o-mini',
+      isDefault: true,
+      enabledFeatures: [AIFeature.auto_categorize, AIFeature.summarize, AIFeature.smart_reply],
+    },
+  });
+
+  // Project documents (CHANGELOG.md "Docs & Files") — general + commercial
+  // docs on a couple of projects, real MinIO objects (not just DB rows) so
+  // "Download" actually works instead of erroring on a dead storageKey.
+  await prisma.projectDocument.deleteMany({ where: { project: { code: { in: PROJECTS.map((p) => p.code) } } } });
+  if (atlasProject) {
+    const sow = await seedDocument('projects', atlasProject.id, 'statement-of-work.txt', 'Statement of Work — ATLAS platform delivery engagement. Scope, milestones, and payment terms.');
+    await prisma.projectDocument.create({
+      data: {
+        projectId: atlasProject.id, fileName: 'statement-of-work.txt', fileSize: sow.fileSize,
+        mimeKind: MimeKind.doc, storageKey: sow.storageKey, uploadedBy: userByName.get('S. Iyer')!, section: 'commercial',
+      },
+    });
+    const notes = await seedDocument('projects', atlasProject.id, 'architecture-notes.txt', 'ATLAS architecture notes — service boundaries, auth flow, and the payment-gateway integration plan.');
+    await prisma.projectDocument.create({
+      data: {
+        projectId: atlasProject.id, fileName: 'architecture-notes.txt', fileSize: notes.fileSize,
+        mimeKind: MimeKind.doc, storageKey: notes.storageKey, uploadedBy: userByName.get('P. Sharma')!,
+      },
+    });
+  }
+  if (orionProject) {
+    const agreement = await seedDocument('projects', orionProject.id, 'rewards-program-agreement.txt', 'Rewards Program Agreement — Meridian Bank premium tier partnership terms.');
+    await prisma.projectDocument.create({
+      data: {
+        projectId: orionProject.id, fileName: 'rewards-program-agreement.txt', fileSize: agreement.fileSize,
+        mimeKind: MimeKind.doc, storageKey: agreement.storageKey, uploadedBy: userByName.get('A. Fernandes')!, section: 'commercial',
+      },
+    });
+  }
+
+  // SLA policy document (CHANGELOG.md) — attach a real file to the org-wide
+  // Critical policy so its download chip has something real to serve.
+  const criticalSla = await prisma.slaPolicy.findFirst({ where: { orgId: org.id, priority: Priority.Critical, projectId: null, clientName: null } });
+  if (criticalSla) {
+    const terms = await seedDocument('sla-policies', criticalSla.id, 'critical-sla-terms.txt', 'Critical priority SLA terms — 30 minute first response, 4 hour resolution target, org-wide default.');
+    await prisma.slaPolicy.update({
+      where: { id: criticalSla.id },
+      data: { documentFileName: 'critical-sla-terms.txt', documentFileSize: terms.fileSize, documentMimeKind: MimeKind.doc, documentStorageKey: terms.storageKey },
+    });
+  }
+
+  // A couple more people with manual timesheet entries (CHANGELOG.md) —
+  // the Team overview previously only ever showed a non-zero Manual column
+  // for P. Sharma.
+  const jortiz = userByName.get('J. Ortiz')!;
+  const mthomas = userByName.get('M. Thomas')!;
+  const moreManualEntries: { userId: string; daysAgo: number; fromHour: number; toHour: number; taskName: string }[] = [
+    { userId: jortiz, daysAgo: 1, fromHour: 9, toHour: 9.5, taskName: 'Daily standup' },
+    { userId: jortiz, daysAgo: 3, fromHour: 16, toHour: 17.5, taskName: 'Code review backlog' },
+    { userId: mthomas, daysAgo: 2, fromHour: 9, toHour: 9.5, taskName: 'Daily standup' },
+    { userId: mthomas, daysAgo: 4, fromHour: 11, toHour: 12, taskName: 'On-call handover' },
+  ];
+  for (const m of moreManualEntries) {
+    const day = daysAgo(m.daysAgo);
+    const startedAt = new Date(day); startedAt.setHours(Math.floor(m.fromHour), (m.fromHour % 1) * 60, 0, 0);
+    const endedAt = new Date(day); endedAt.setHours(Math.floor(m.toHour), (m.toHour % 1) * 60, 0, 0);
+    const durationMinutes = Math.round(((endedAt.getTime() - startedAt.getTime()) / 60000) * 100) / 100;
+    await prisma.timeEntry.create({
+      data: { userId: m.userId, startedAt, endedAt, durationMinutes, source: TimeEntrySource.manual, taskName: m.taskName },
+    });
   }
 
   // eslint-disable-next-line no-console

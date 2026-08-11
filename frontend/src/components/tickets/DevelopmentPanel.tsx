@@ -1,5 +1,6 @@
-import { GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink, X, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink, Download, X, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { githubApi } from '../../api/github';
+import { exportToCsv } from '../ui/exportCsv';
 import { PullRequestLink, PrState, PrReviewState } from '../../types/ticket';
 
 interface Props {
@@ -26,9 +27,20 @@ export function DevelopmentPanel({ displayId, pullRequests, onChanged }: Props) 
     onChanged();
   }
 
+  function exportPrs() {
+    exportToCsv(
+      `${displayId}-pull-requests`,
+      ['PR #', 'Title', 'State', 'Review', 'Branch', 'Author', 'URL'],
+      pullRequests.map((pr) => [pr.number, pr.title, STATE_META[pr.state].label, REVIEW_META[pr.reviewState].label, pr.headRef, pr.authorLogin, pr.url]),
+    );
+  }
+
   return (
     <div className="panel">
-      <div className="td-section-title"><GitPullRequest size={13} />Development ({pullRequests.length})</div>
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><GitPullRequest size={13} />Development ({pullRequests.length})</span>
+        <button className="btn-ghost" onClick={exportPrs} disabled={pullRequests.length === 0}><Download size={11} />CSV</button>
+      </div>
 
       {pullRequests.length === 0 ? (
         <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', lineHeight: 1.5 }}>

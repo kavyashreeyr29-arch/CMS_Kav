@@ -143,6 +143,47 @@ export class AnalyticsService {
 
     return { period, projectCode: projectCode ?? 'ALL', buckets };
   }
+
+  /**
+   * Average time a ticket spends in each status before moving on (or "now",
+   * if it's still there) — the bottleneck-finder for the configurable
+   * Workflow (/workflow): a status with a high average is where tickets are
+   * actually getting stuck, gate or no gate. Built from TicketFieldChange's
+   * existing 'Status' entries (already written on every transition,
+   * tickets.service.ts updateStatus) rather than a new tracking mechanism.
+   */
+  async cycleTime(user: AuthenticatedUser, perms: RolePermissions) {
+    const changes = await this.prisma.ticketFieldChange.findMany({
+      where: { fieldName: 'Status', ticket: ticketVisibilityWhere(user, perms) },
+      select: { ticketId: true, newValue: true, changedAt: true },
+      orderBy: [{ ticketId: 'asc' }, { changedAt: 'asc' }],
+    });
+
+    const byTicket = new Map<string, typeof changes>();
+    for (const c of changes) {
+      const list = byTicket.get(c.ticketId) ?? [];
+      list.push(c);
+      byTicket.set(c.ticketId, list);
+    }
+
+    const byStatus = new Map<string, { totalHours: number; count: number }>();
+    for (const list of byTicket.values()) {
+      for (let i = 0; i < list.length; i++) {
+        const status = list[i].newValue;
+        if (!status) continue;
+        const start = list[i].changedAt.getTime();
+        const end = (list[i + 1]?.changedAt ?? new Date()).getTime();
+        const entry = byStatus.get(status) ?? { totalHours: 0, count: 0 };
+        entry.totalHours += (end - start) / (60 * 60 * 1000);
+        entry.count += 1;
+        byStatus.set(status, entry);
+      }
+    }
+
+    return [...byStatus.entries()]
+      .map(([status, { totalHours, count }]) => ({ status, avgHours: Math.round((totalHours / count) * 10) / 10, transitions: count }))
+      .sort((a, b) => b.avgHours - a.avgHours);
+  }
 }
 
 function daysBetween(a: Date, b: Date): number {

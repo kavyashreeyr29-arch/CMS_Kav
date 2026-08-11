@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { usersApi, UserRow } from '../api/users';
 import { rolesApi } from '../api/roles';
 import { ApiError } from '../api/client';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 const GROUP_ORDER = ['Full access', 'Field team', 'External'];
 
@@ -63,6 +64,14 @@ export function Users() {
 
   const searching = search.trim().length > 0;
 
+  function exportUsers() {
+    exportToCsv(
+      'users',
+      ['Name', 'Email', 'Department', 'Role'],
+      filtered.map((u) => [u.name, u.email, u.baseRole?.group ?? '', u.baseRole?.label ?? u.baseRoleId]),
+    );
+  }
+
   if (loading) return <div className="loading-state">Loading users…</div>;
 
   return (
@@ -78,7 +87,8 @@ export function Users() {
             aria-label="Search users"
           />
         </div>
-        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowAdd(true)}>
+        <button className="btn-ghost" style={{ marginLeft: 'auto' }} onClick={exportUsers} disabled={filtered.length === 0}><Download size={13} />CSV</button>
+        <button className="btn-primary" onClick={() => setShowAdd(true)}>
           <UserPlus size={14} />Add user
         </button>
       </div>

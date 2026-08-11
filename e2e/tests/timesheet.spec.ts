@@ -9,6 +9,12 @@ const API_BASE = 'http://localhost:3000/api/v1';
 const DEVELOPER_EMAIL = 'psharma@elevatohub.io'; // senior_developer — timeTracking: true
 const DIRECTOR_EMAIL = 'nrao@elevatohub.io'; // director — timeTracking: false
 
+// Relative to whenever the suite actually runs — hardcoded absolute dates
+// here rotted once this long-running session's "today" drifted past them,
+// failing to capture seed.ts's own daysAgo()-relative demo entries.
+function today(): string { return new Date().toISOString().slice(0, 10); }
+function daysAgoStr(n: number): string { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
+
 async function token(request: APIRequestContext, email: string): Promise<string> {
   const res = await request.post(`${API_BASE}/auth/login`, { data: { email, password: 'password123' } });
   return (await res.json()).accessToken;
@@ -18,10 +24,10 @@ function auth(t: string) { return { Authorization: `Bearer ${t}` }; }
 test.describe('My Timesheet — API', () => {
   test('a role without timeTracking is forbidden from every timesheet endpoint', async ({ request }) => {
     const t = await token(request, DIRECTOR_EMAIL);
-    const list = await request.get(`${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03`, { headers: auth(t) });
+    const list = await request.get(`${API_BASE}/time-entries/mine?startDate=${daysAgoStr(10)}&endDate=${today()}`, { headers: auth(t) });
     expect(list.status()).toBe(403);
     const create = await request.post(`${API_BASE}/time-entries`, {
-      headers: auth(t), data: { date: '2026-08-03', fromTime: '09:00', toTime: '10:00', taskName: 'nope' },
+      headers: auth(t), data: { date: today(), fromTime: '09:00', toTime: '10:00', taskName: 'nope' },
     });
     expect(create.status()).toBe(403);
   });
@@ -29,7 +35,7 @@ test.describe('My Timesheet — API', () => {
   test('a manual entry requires toTime after fromTime', async ({ request }) => {
     const t = await token(request, DEVELOPER_EMAIL);
     const res = await request.post(`${API_BASE}/time-entries`, {
-      headers: auth(t), data: { date: '2026-08-03', fromTime: '14:00', toTime: '13:00', taskName: 'bad range' },
+      headers: auth(t), data: { date: today(), fromTime: '14:00', toTime: '13:00', taskName: 'bad range' },
     });
     expect(res.status()).toBe(400);
   });
@@ -38,7 +44,7 @@ test.describe('My Timesheet — API', () => {
     const t = await token(request, DEVELOPER_EMAIL);
     const otherT = await token(request, 'jortiz@elevatohub.io');
     const created = await request.post(`${API_BASE}/time-entries`, {
-      headers: auth(t), data: { date: '2026-08-03', fromTime: '09:00', toTime: '10:30', taskName: `E2E API manual ${Date.now()}` },
+      headers: auth(t), data: { date: today(), fromTime: '09:00', toTime: '10:30', taskName: `E2E API manual ${Date.now()}` },
     });
     expect(created.ok()).toBeTruthy();
     const entry = await created.json();
@@ -54,7 +60,7 @@ test.describe('My Timesheet — API', () => {
 
   test('a timer-derived entry cannot be deleted through the manual-delete endpoint', async ({ request }) => {
     const t = await token(request, DEVELOPER_EMAIL);
-    const mine = await (await request.get(`${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03`, { headers: auth(t) })).json();
+    const mine = await (await request.get(`${API_BASE}/time-entries/mine?startDate=${daysAgoStr(45)}&endDate=${today()}`, { headers: auth(t) })).json();
     const timerEntry = mine.find((e: { source: string }) => e.source === 'timer');
     const res = await request.delete(`${API_BASE}/time-entries/${timerEntry.id}`, { headers: auth(t) });
     expect(res.status()).toBe(400);
@@ -62,7 +68,7 @@ test.describe('My Timesheet — API', () => {
 
   test('team-summary is org-wide for a director (no timeTracking) but forbidden for an individual-visibility role', async ({ request }) => {
     const dirT = await token(request, DIRECTOR_EMAIL);
-    const summary = await request.get(`${API_BASE}/time-entries/team-summary?startDate=2026-06-01&endDate=2026-08-03`, { headers: auth(dirT) });
+    const summary = await request.get(`${API_BASE}/time-entries/team-summary?startDate=${daysAgoStr(60)}&endDate=${today()}`, { headers: auth(dirT) });
     expect(summary.ok()).toBeTruthy();
     const rows = await summary.json();
     expect(rows.length).toBeGreaterThan(0);
@@ -70,7 +76,7 @@ test.describe('My Timesheet — API', () => {
     expect(rows[0]).toHaveProperty('manual_minutes');
 
     const devT = await token(request, DEVELOPER_EMAIL);
-    const forbidden = await request.get(`${API_BASE}/time-entries/team-summary?startDate=2026-06-01&endDate=2026-08-03`, { headers: auth(devT) });
+    const forbidden = await request.get(`${API_BASE}/time-entries/team-summary?startDate=${daysAgoStr(60)}&endDate=${today()}`, { headers: auth(devT) });
     expect(forbidden.status()).toBe(403);
   });
 
@@ -79,14 +85,14 @@ test.describe('My Timesheet — API', () => {
     const devLogin = await (await request.post(`${API_BASE}/auth/login`, { data: { email: DEVELOPER_EMAIL, password: 'password123' } })).json();
 
     const asDirector = await request.get(
-      `${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03&userId=${devLogin.user.id}`,
+      `${API_BASE}/time-entries/mine?startDate=${daysAgoStr(10)}&endDate=${today()}&userId=${devLogin.user.id}`,
       { headers: auth(dirT) },
     );
     expect(asDirector.ok()).toBeTruthy();
 
     const otherDevT = await token(request, 'jortiz@elevatohub.io');
     const asPeer = await request.get(
-      `${API_BASE}/time-entries/mine?startDate=2026-08-01&endDate=2026-08-03&userId=${devLogin.user.id}`,
+      `${API_BASE}/time-entries/mine?startDate=${daysAgoStr(10)}&endDate=${today()}&userId=${devLogin.user.id}`,
       { headers: auth(otherDevT) },
     );
     expect(asPeer.status()).toBe(403);

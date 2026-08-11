@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Gift, Plus, X } from 'lucide-react';
+import { Download, Gift, Plus, X } from 'lucide-react';
 import { rewardsApi, RewardRow } from '../../api/rewards';
 import { ticketsApi } from '../../api/tickets';
 import { projectsApi } from '../../api/projects';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { Project } from '../../types/project';
 import { Ticket } from '../../types/ticket';
 
@@ -65,11 +66,22 @@ export function ProjectRewardsTab({ project, tickets, onChange }: Props) {
 
   if (loading) return <div className="loading-state">Loading rewards…</div>;
 
+  function exportRewards() {
+    exportToCsv(
+      `${project.code}-rewards`,
+      ['Name', 'Type', 'Value', 'Tickets', 'Files'],
+      rewards.map((r) => [r.name, r.rewardType ?? '', r.value ?? '', r._count.tickets, r._count.documents]),
+    );
+  }
+
   return (
     <div>
       <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
         <span><Gift size={13} style={{ verticalAlign: -2 }} /> Rewards ({rewards.length})</span>
-        <button className="btn-ghost" onClick={() => setShowCreate((s) => !s)}><Plus size={12} style={{ marginRight: 3 }} />New reward</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-ghost" onClick={exportRewards} disabled={rewards.length === 0}><Download size={12} />CSV</button>
+          <button className="btn-ghost" onClick={() => setShowCreate((s) => !s)}><Plus size={12} style={{ marginRight: 3 }} />New reward</button>
+        </div>
       </div>
 
       {showCreate && (

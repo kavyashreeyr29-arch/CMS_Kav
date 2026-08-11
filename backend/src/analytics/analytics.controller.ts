@@ -31,4 +31,10 @@ export class AnalyticsController {
   ) {
     return this.analyticsService.trend(user, effectivePermissions(user), period, project);
   }
+
+  @RequirePermission('adminAnalytics')
+  @Get('cycle-time')
+  cycleTime(@CurrentUser() user: AuthenticatedUser) {
+    return this.analyticsService.cycleTime(user, effectivePermissions(user));
+  }
 }

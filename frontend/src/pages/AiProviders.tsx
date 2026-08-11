@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2 } from 'lucide-react';
 import { aiProvidersApi, AiProviderRow } from '../api/aiProviders';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 const PROVIDER_TYPES = ['openai', 'anthropic', 'azure_openai', 'custom'];
 const FEATURES = ['auto_categorize', 'summarize', 'smart_reply', 'sla_breach_prediction', 'duplicate_detection', 'root_cause_clustering'];
@@ -39,6 +40,13 @@ export function AiProviders() {
     await aiProvidersApi.remove(id);
     load();
   }
+  function exportProviders() {
+    exportToCsv(
+      'ai-providers',
+      ['Provider', 'Type', 'Model', 'Default', 'Features'],
+      providers.map((p) => [p.displayName, p.providerType, p.defaultModel, p.isDefault ? 'Yes' : 'No', p.enabledFeatures.join('; ')]),
+    );
+  }
 
   if (loading) return <div className="loading-state">Loading AI providers…</div>;
 
@@ -49,6 +57,7 @@ export function AiProviders() {
           <div className="panel-title">AI integrations — bring your own AI</div>
           <div className="panel-sub">Connect any compatible provider; choose which features it powers. All AI output is advisory only.</div>
         </div>
+        <button className="btn-ghost" onClick={exportProviders} disabled={providers.length === 0}><Download size={13} />CSV</button>
       </div>
 
       <div className="form-grid" style={{ marginBottom: 16 }}>

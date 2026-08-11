@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2 } from 'lucide-react';
 import { labelsApi, LabelRow } from '../api/labels';
 import { LabelChip } from '../components/ui/Chips';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 export function Labels() {
   const [labels, setLabels] = useState<LabelRow[]>([]);
@@ -24,6 +25,9 @@ export function Labels() {
     await labelsApi.remove(id);
     load();
   }
+  function exportLabels() {
+    exportToCsv('labels', ['Label', 'Tickets'], labels.map((l) => [l.name, l._count.tickets]));
+  }
 
   if (loading) return <div className="loading-state">Loading labels…</div>;
 
@@ -34,6 +38,7 @@ export function Labels() {
           <div className="panel-title">Issue labels / categories</div>
           <div className="panel-sub">Used when raising a ticket, and rolled up in the recurring-issue reports</div>
         </div>
+        <button className="btn-ghost" onClick={exportLabels} disabled={labels.length === 0}><Download size={13} />CSV</button>
       </div>
       <div className="filter-bar" style={{ marginBottom: 16 }}>
         <input

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Activity, Check, Clock, Copy, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
+  Activity, Check, Clock, Copy, Download, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
   RotateCcw, Send, StopCircle, Timer, Unlink, Users as UsersIcon, X,
 } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
@@ -16,6 +16,7 @@ import { AttachmentUploader } from '../components/ui/AttachmentUploader';
 import { AttachmentGrid } from '../components/ui/AttachmentGrid';
 import { formatDuration } from '../components/ui/formatDuration';
 import { Linkify } from '../components/ui/Linkify';
+import { exportToCsv } from '../components/ui/exportCsv';
 import { QaTestCasesPanel } from '../components/tickets/QaTestCasesPanel';
 import { DevelopmentPanel } from '../components/tickets/DevelopmentPanel';
 import { ApprovalsPanel } from '../components/tickets/ApprovalsPanel';
@@ -241,6 +242,28 @@ export function TicketDetail() {
     }
   }
 
+  function exportActivity() {
+    exportToCsv(
+      `${ticket!.displayId}-activity`,
+      ['Time', 'Actor', 'Action'],
+      activity.map((a) => [new Date(a.createdAt).toLocaleString(), a.actor?.name ?? '', a.actionText]),
+    );
+  }
+  function exportAttachments() {
+    exportToCsv(
+      `${ticket!.displayId}-attachments`,
+      ['File name', 'Type', 'Size (bytes)', 'Uploaded'],
+      generalAttachments.map((a) => [a.fileName, a.mimeKind, a.fileSize, new Date(a.createdAt).toLocaleString()]),
+    );
+  }
+  function exportFieldChanges() {
+    exportToCsv(
+      `${ticket!.displayId}-change-history`,
+      ['Time', 'Field', 'From', 'To', 'Changed by'],
+      fieldChanges.map((c) => [new Date(c.changedAt).toLocaleString(), c.fieldName, c.oldValue ?? '', c.newValue ?? '', c.changer?.name ?? '']),
+    );
+  }
+
   return (
     <div className="ticket-detail-layout">
       <div className="ticket-detail-main panel">
@@ -370,7 +393,10 @@ export function TicketDetail() {
         </div>
 
         <div data-testid="ticket-activity">
-          <div className="td-section-title"><Activity size={13} />Activity</div>
+          <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={13} />Activity</span>
+            <button className="btn-ghost" onClick={exportActivity} disabled={activity.length === 0}><Download size={11} />CSV</button>
+          </div>
           {activity.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>No activity recorded yet.</div>}
           {activity.map((a) => (
             <div className="timeline-item" key={a.id}>
@@ -529,7 +555,10 @@ export function TicketDetail() {
         )}
 
         <div className="panel">
-          <div className="td-section-title"><Paperclip size={13} />Attachments ({generalAttachments.length})</div>
+          <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Paperclip size={13} />Attachments ({generalAttachments.length})</span>
+            <button className="btn-ghost" onClick={exportAttachments} disabled={generalAttachments.length === 0}><Download size={11} />CSV</button>
+          </div>
           <AttachmentGrid
             files={generalAttachments}
             getDownloadUrl={(attachmentId) => ticketsApi.getAttachmentDownloadUrl(id!, attachmentId)}
@@ -543,7 +572,10 @@ export function TicketDetail() {
         </div>
 
         <div className="panel">
-          <div className="td-section-title"><History size={13} />Change history ({fieldChanges.length})</div>
+          <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={13} />Change history ({fieldChanges.length})</span>
+            <button className="btn-ghost" onClick={exportFieldChanges} disabled={fieldChanges.length === 0}><Download size={11} />CSV</button>
+          </div>
           {fieldChanges.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>No field changes recorded yet.</div>}
           {fieldChanges.map((c) => (
             <div className="timeline-item" key={c.id}>

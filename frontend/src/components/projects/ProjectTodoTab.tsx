@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ListChecks, Plus, Trash2 } from 'lucide-react';
+import { Download, ListChecks, Plus, Trash2 } from 'lucide-react';
 import { projectTodosApi, ProjectTodoRow } from '../../api/projectTodos';
 import { projectsApi } from '../../api/projects';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { UserRow } from '../../api/users';
 import { Project } from '../../types/project';
 
@@ -55,9 +56,20 @@ export function ProjectTodoTab({ project, users, onChange }: Props) {
   const pending = items.filter((i) => !i.done);
   const done = items.filter((i) => i.done);
 
+  function exportTodos() {
+    exportToCsv(
+      `${project.code}-todo-list`,
+      ['Task', 'Done', 'Assignee', 'Due date'],
+      items.map((i) => [i.title, i.done ? 'Yes' : 'No', i.assignee?.name ?? '', i.dueDate ? i.dueDate.slice(0, 10) : '']),
+    );
+  }
+
   return (
     <div>
-      <div className="td-section-title"><ListChecks size={13} />To-do list ({pending.length} open)</div>
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ListChecks size={13} />To-do list ({pending.length} open)</span>
+        <button className="btn-ghost" onClick={exportTodos} disabled={items.length === 0}><Download size={12} />CSV</button>
+      </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         <input

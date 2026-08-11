@@ -3,11 +3,12 @@ import { Download } from 'lucide-react';
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { analyticsApi, ProductivityResponse, ProjectWiseRow, TrendResponse } from '../api/analytics';
+import { analyticsApi, CycleTimeRow, ProductivityResponse, ProjectWiseRow, TrendResponse } from '../api/analytics';
 import { ticketsApi } from '../api/tickets';
 import { campaignsApi, CampaignTicketSummaryRow } from '../api/campaigns';
 import { LabelBreakdown } from '../components/dashboard/LabelBreakdown';
 import { exportToCsv } from '../components/ui/exportCsv';
+import { formatStatus } from '../components/ui/Chips';
 import { useAuth } from '../auth/AuthContext';
 import { Ticket, TicketStatus } from '../types/ticket';
 
@@ -56,6 +57,7 @@ export function Analytics() {
   const [productivity, setProductivity] = useState<ProductivityResponse | null>(null);
   const [trend, setTrend] = useState<TrendResponse | null>(null);
   const [campaignSummary, setCampaignSummary] = useState<CampaignTicketSummaryRow[] | null>(null);
+  const [cycleTime, setCycleTime] = useState<CycleTimeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const canSeeCampaignSummary = !!user && CAMPAIGN_SUMMARY_ROLES.includes(user.role.id);
 
@@ -94,6 +96,10 @@ export function Analytics() {
   useEffect(() => {
     analyticsApi.trend(periodPreset === 'custom' ? 'month' : periodPreset).then(setTrend);
   }, [periodPreset]);
+
+  useEffect(() => {
+    analyticsApi.cycleTime().then(setCycleTime).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!canSeeCampaignSummary) return;
@@ -183,6 +189,13 @@ export function Analytics() {
       'project-wise-performance',
       ['Project', 'Name', 'Total', 'Open', 'Closed', 'Avg age (open)', 'Hours spent', 'Client-raised', 'Client open', 'Client closed'],
       rows.map((r) => [r.projectCode, r.projectName, r.total, r.open, r.closed, r.avgAgeDays, r.hoursSpent, r.clientTotal, r.clientOpen, r.clientClosed]),
+    );
+  }
+  function exportCycleTime() {
+    exportToCsv(
+      'time-in-status',
+      ['Status', 'Avg days', 'Transitions'],
+      cycleTime.map((r) => [formatStatus(r.status), Math.round((r.avgHours / 24) * 10) / 10, r.transitions]),
     );
   }
 
@@ -291,6 +304,39 @@ export function Analytics() {
           </div>
         </div>
         <LabelBreakdown tickets={tickets} sub="Where tickets are coming from, across all projects — full breakdown" />
+      </div>
+
+      <div className="row" style={{ marginBottom: 12 }}>
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">Time in status</div>
+              <div className="panel-sub">Average time a ticket spends in each status before moving on — where work actually gets stuck in the Workflow pipeline (see /workflow for the gate config), not just where it's sitting right now</div>
+            </div>
+            <button className="btn-ghost" onClick={exportCycleTime} disabled={cycleTime.length === 0}><Download size={13} />CSV</button>
+          </div>
+          {cycleTime.length === 0 ? (
+            <div className="empty-state">No status-transition history yet.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={28 * cycleTime.length + 40}>
+              <BarChart
+                data={cycleTime.map((r) => ({ ...r, days: Math.round((r.avgHours / 24) * 10) / 10 }))}
+                layout="vertical"
+                margin={{ left: 8, right: 24 }}
+              >
+                <CartesianGrid stroke="#EEF0F6" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 10.5, fill: '#9AA1B2' }} axisLine={{ stroke: '#E3E5EF' }} tickLine={false} unit="d" />
+                <YAxis type="category" dataKey="status" tickFormatter={formatStatus} tick={{ fontSize: 10.5, fill: '#9AA1B2' }} axisLine={false} tickLine={false} width={120} />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E3E5EF' }}
+                  formatter={(value: number, _name, item) => [`${value}d avg (${item.payload.transitions} transition${item.payload.transitions !== 1 ? 's' : ''})`, 'Time in status']}
+                  labelFormatter={(label) => formatStatus(String(label))}
+                />
+                <Bar dataKey="days" radius={[0, 4, 4, 0]} fill="#004053" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
 
       <div className="row row-2" style={{ marginBottom: 12 }}>

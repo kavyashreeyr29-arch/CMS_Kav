@@ -26,9 +26,16 @@ export interface ProductivityResponse {
   businessCategoryBreakdown: { category: string; hours: number; ticketCount: number }[];
 }
 
+export interface CycleTimeRow {
+  status: string;
+  avgHours: number;
+  transitions: number;
+}
+
 export const analyticsApi = {
   projectWise: () => api.get<ProjectWiseRow[]>('/analytics/project-wise'),
   trend: (period: 'month' | 'quarter' | 'year', project?: string) =>
     api.get<TrendResponse>('/analytics/trend', { period, project }),
   productivity: (sinceDays?: number) => api.get<ProductivityResponse>('/analytics/productivity', sinceDays ? { sinceDays } : undefined),
+  cycleTime: () => api.get<CycleTimeRow[]>('/analytics/cycle-time'),
 };

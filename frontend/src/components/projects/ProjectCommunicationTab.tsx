@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Send, Trash2 } from 'lucide-react';
+import { Download, MessageSquare, Send, Trash2 } from 'lucide-react';
 import { projectNotesApi, ProjectNoteRow } from '../../api/projectNotes';
 import { projectsApi } from '../../api/projects';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { useAuth } from '../../auth/AuthContext';
 import { Project } from '../../types/project';
 
@@ -44,9 +45,20 @@ export function ProjectCommunicationTab({ project, onChange }: Props) {
     load();
   }
 
+  function exportNotes() {
+    exportToCsv(
+      `${project.code}-message-board`,
+      ['Author', 'Posted', 'Message'],
+      notes.map((n) => [n.author.name, new Date(n.createdAt).toLocaleString(), n.body]),
+    );
+  }
+
   return (
     <div>
-      <div className="td-section-title"><MessageSquare size={13} />Message board ({notes.length})</div>
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MessageSquare size={13} />Message board ({notes.length})</span>
+        <button className="btn-ghost" onClick={exportNotes} disabled={notes.length === 0}><Download size={12} />CSV</button>
+      </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         <textarea

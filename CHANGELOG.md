@@ -3,6 +3,66 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-10 — Full sanity pass: seed-data gaps, 2 real bugs, CSV export everywhere, cycle-time analytics
+
+User request: check for other errors, test end-to-end, explain what the Workflow module does, fill in seed data
+so every section shows real state, and make sure everywhere data is displayed is also downloadable.
+
+### Checked — no other errors
+Backend/frontend typecheck clean, backend logs (48h window) had zero runtime errors, full Playwright suite
+passed (the only failures seen mid-session were the already-documented Team Hours day-rollover timing flake,
+confirmed passing in isolation as before).
+
+### Fixed — two real bugs found while auditing
+- **`ActivityLogEntry.projectCode` was declared but never populated by any of its ~15 call sites** across
+  tickets/github/approvals — silently broke Dashboard's per-project "Recent activity" filter
+  (`activity.filter(a => a.projectCode === projectFilter)` always matched nothing whenever a specific project
+  was selected). Fixed at the single choke point instead of touching every caller:
+  `activity-log.service.ts`'s `record()` now derives `projectCode` from `ticketId` itself when the caller
+  didn't supply one. Verified live — a freshly created ticket's activity entry now carries the right code.
+- **New Audit log CSV export requested `limit: total` in one call**, but the API caps `limit` at 100
+  (`@Max(100)` on the DTO) — the button silently did nothing past ~100 logged actions (an unhandled 400,
+  found via a Playwright test that actually waited for the download event rather than just asserting the
+  button existed). Fixed by paginating the export in 100-row pages instead of one oversized request.
+- Also deleted ~1785 orphaned `activity_log` rows accumulated this session from repeatedly cleaning up E2E
+  test tickets via direct SQL without also clearing their activity trail — self-inflicted debris, not a
+  product defect, but it was cluttering "Recent activity" with references to tickets that no longer exist.
+
+### Added — seed data for every previously-empty section
+- Kanban's status cycle only ever produced `Open`/`InProgress`/`Completed` for the main per-project ticket
+  batch — `Assigned`, `InReview`, `Closed`, `Reopened` (3 of 11 board columns) had zero tickets on a fresh
+  seed. `TICKET_STATUS_CYCLE` now covers all eight engineering-delivery statuses.
+- GitHub integration and AI integrations pages showed a bare "not connected"/empty state — now seed a
+  connected demo repo (with `onPrOpened/Approved/Merged` auto-transition targets set, so the Development panel
+  and Workflow gates have something real to demonstrate) and a default OpenAI provider config.
+- Docs & Files / commercial documents and one SLA policy document are now real MinIO objects (not just DB
+  rows pointing at nothing) — uploaded via the Docker-internal `minio:9000` endpoint from `seed.ts` (distinct
+  from the browser-facing `S3_ENDPOINT`, since the seed script runs inside the backend container). Verified
+  by actually downloading one through the real presigned-URL flow.
+- Manual timesheet entries previously existed for only one person; two more now have a mix of automated +
+  manual entries so the Team overview shows real variety.
+- "Recent activity" was always empty on a fresh seed (`seed.ts` creates tickets directly via Prisma, bypassing
+  the service layer that writes activity log entries) — seeded a handful of realistic entries across projects.
+- A synthesized status-transition trail (`TicketFieldChange`, `fieldName: 'Status'`) on 10 Completed tickets,
+  for the new cycle-time panel below — same reasoning as Recent Activity, seed.ts never generates this
+  organically.
+
+### Added — "Time in status" analytics panel (`GET /analytics/cycle-time`)
+Average time a ticket spends in each status before moving on (or "now", if it's still there) — the
+bottleneck-finder for the configurable Workflow: a high average means tickets are actually getting stuck
+there, gate or no gate. Computed from `TicketFieldChange`'s existing `'Status'` entries (already written on
+every transition) rather than a new tracking mechanism — grouped by ticket, consecutive-change durations
+summed per status, sorted longest-stuck-first. Horizontal bar chart on `/analytics`, with CSV export.
+
+### Added — CSV export across ~20 previously-missing pages/panels
+Dashboard (tickets-raised-by, ticket ageing, team workload, project health, upcoming due dates, recent
+activity, and the shared `LabelBreakdown` component so Dashboard/MyBoard/Analytics's recurring-issue panel all
+got it at once), My tickets summary, Backlog, Users, Teams, Audit log, Labels, Business categories,
+AI integrations, Workflow's transition/gate matrix, and — on the ticket/project detail pages — Activity,
+Change history, Attachments, QA test cases, Development (PRs), Approvals, and every project folder tab
+(Campaigns, Rewards, Communication, To-do, Docs & Files manifest). All using the existing shared
+`exportToCsv()` helper, no new export mechanism introduced.
+
 ## 2026-08-05 — Ticket linking: copy link, auto-linked references, sub-tasks, convert to standalone
 
 User request: a way to copy a ticket's link and reference it from another ticket, plus create sub-tasks and

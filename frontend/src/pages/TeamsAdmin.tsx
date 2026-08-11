@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, Users as UsersIcon, X } from 'lucide-react';
+import { Download, Plus, Users as UsersIcon, X } from 'lucide-react';
 import { teamsApi, TeamRow } from '../api/teams';
 import { usersApi, UserRow } from '../api/users';
 import { ApiError } from '../api/client';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 // Admin-configurable Teams (CHANGELOG.md "admin should be able to create
 // teams") — Team is what drives the 'team' permission scope (Lead/Manager
@@ -23,13 +24,22 @@ export function TeamsAdmin() {
   }
   useEffect(load, []);
 
+  function exportTeams() {
+    exportToCsv(
+      'teams',
+      ['Team', 'Lead', 'Members'],
+      teams.map((t) => [t.name, t.lead?.name ?? '', t.memberships.map((m) => m.user.name).join('; ')]),
+    );
+  }
+
   if (loading) return <div className="loading-state">Loading teams…</div>;
 
   return (
     <>
       <div className="filter-bar">
         <div className="select-pill">{teams.length} teams</div>
-        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>
+        <button className="btn-ghost" style={{ marginLeft: 'auto' }} onClick={exportTeams} disabled={teams.length === 0}><Download size={13} />CSV</button>
+        <button className="btn-primary" onClick={() => setEditing('new')}>
           <Plus size={14} />New team
         </button>
       </div>

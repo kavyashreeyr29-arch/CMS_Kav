@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Megaphone, Plus, X } from 'lucide-react';
+import { Download, Megaphone, Plus, X } from 'lucide-react';
 import { campaignsApi, CampaignRow, CampaignStatus } from '../../api/campaigns';
 import { ticketsApi } from '../../api/tickets';
 import { projectsApi } from '../../api/projects';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { Project } from '../../types/project';
 import { Ticket } from '../../types/ticket';
 
@@ -72,11 +73,22 @@ export function ProjectCampaignsTab({ project, tickets, onChange }: Props) {
 
   if (loading) return <div className="loading-state">Loading campaigns…</div>;
 
+  function exportCampaigns() {
+    exportToCsv(
+      `${project.code}-campaigns`,
+      ['Name', 'Status', 'Start date', 'End date', 'Tickets', 'Files'],
+      campaigns.map((c) => [c.name, c.status, c.startDate ?? '', c.endDate ?? '', c._count.tickets, c._count.documents]),
+    );
+  }
+
   return (
     <div>
       <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
         <span><Megaphone size={13} style={{ verticalAlign: -2 }} /> Campaigns ({campaigns.length})</span>
-        <button className="btn-ghost" onClick={() => setShowCreate((s) => !s)}><Plus size={12} style={{ marginRight: 3 }} />New campaign</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-ghost" onClick={exportCampaigns} disabled={campaigns.length === 0}><Download size={12} />CSV</button>
+          <button className="btn-ghost" onClick={() => setShowCreate((s) => !s)}><Plus size={12} style={{ marginRight: 3 }} />New campaign</button>
+        </div>
       </div>
 
       {showCreate && (

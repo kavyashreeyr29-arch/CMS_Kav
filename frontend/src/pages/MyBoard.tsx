@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Clock, Gauge, Ticket as TicketIcon, TrendingUp } from 'lucide-react';
+import { CheckCircle2, Clock, Download, Gauge, Ticket as TicketIcon, TrendingUp } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { useAuth } from '../auth/AuthContext';
 import { KpiCard } from '../components/ui/KpiCard';
 import { StatusDot, formatStatus } from '../components/ui/Chips';
+import { exportToCsv } from '../components/ui/exportCsv';
 import { LabelBreakdown } from '../components/dashboard/LabelBreakdown';
 import { Ticket } from '../types/ticket';
 
@@ -28,6 +29,14 @@ export function MyBoard() {
   const inProgress = tickets.filter((t) => ['InProgress', 'InReview', 'QATesting'].includes(t.status));
   const closed = tickets.filter((t) => ['Completed', 'Closed'].includes(t.status));
 
+  function exportTickets() {
+    exportToCsv(
+      'my-tickets',
+      ['ID', 'Title', 'Status', 'Raised'],
+      tickets.map((t) => [t.displayId, t.title, formatStatus(t.status), t.createdAt.slice(0, 10)]),
+    );
+  }
+
   return (
     <>
       <div className="restricted-banner">
@@ -44,7 +53,10 @@ export function MyBoard() {
         <LabelBreakdown tickets={tickets} title="My tickets by issue category" sub="Helps spot which problem types you raise most often" />
       </div>
       <div className="panel">
-        <div className="panel-head"><div className="panel-title">My recent tickets</div></div>
+        <div className="panel-head">
+          <div className="panel-title">My recent tickets</div>
+          <button className="btn-ghost" onClick={exportTickets} disabled={tickets.length === 0}><Download size={13} />CSV</button>
+        </div>
         <div className="table-scroll">
           <table className="data-table" style={{ minWidth: 0 }}>
             <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Raised</th></tr></thead>

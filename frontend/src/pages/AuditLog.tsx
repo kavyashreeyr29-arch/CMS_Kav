@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { History } from 'lucide-react';
+import { Download, History } from 'lucide-react';
 import { auditLogApi, AuditLogEntry } from '../api/auditLog';
+import { exportToCsv } from '../components/ui/exportCsv';
 
 const PAGE_SIZE = 20;
 
@@ -41,6 +42,7 @@ export function AuditLog() {
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -49,6 +51,34 @@ export function AuditLog() {
       setTotal(res.total);
     }).finally(() => setLoading(false));
   }, [offset]);
+
+  // Exports every logged action, not just what's been "Load more"-d into
+  // view — the on-screen list is paginated for performance, the download
+  // shouldn't be. Fetched in PAGE_SIZE-capped pages (the API rejects any
+  // limit over 100) rather than one big request for `total` rows.
+  async function exportAll() {
+    setExporting(true);
+    try {
+      const all: AuditLogEntry[] = [];
+      for (let fetchOffset = 0; fetchOffset < total; fetchOffset += 100) {
+        const res = await auditLogApi.list({ limit: 100, offset: fetchOffset });
+        all.push(...res.data);
+      }
+      exportToCsv(
+        'audit-log',
+        ['Time', 'Actor', 'Action', 'Target', 'Changes'],
+        all.map((e) => [
+          new Date(e.createdAt).toLocaleString(),
+          e.actor?.name ?? '',
+          ACTION_LABEL[e.action] ?? e.action,
+          e.targetLabel,
+          e.changes ? Object.entries(e.changes).map(([field, { before, after }]) => `${field}: ${formatValue(before)} → ${formatValue(after)}`).join('; ') : '',
+        ]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <>
@@ -61,6 +91,7 @@ export function AuditLog() {
             <div className="panel-title">Admin activity log</div>
             <div className="panel-sub">Every user, role, and team change — who, what, and when, with a full before/after diff.</div>
           </div>
+          <button className="btn-ghost" onClick={exportAll} disabled={exporting || total === 0}><Download size={13} />{exporting ? 'Exporting…' : 'CSV'}</button>
         </div>
         {loading && offset === 0 ? (
           <div className="loading-state">Loading audit log…</div>

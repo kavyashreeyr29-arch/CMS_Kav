@@ -1,4 +1,6 @@
+import { Download } from 'lucide-react';
 import { colorForLabel } from '../ui/colorForLabel';
+import { exportToCsv } from '../ui/exportCsv';
 import { Ticket } from '../../types/ticket';
 
 interface Props {
@@ -24,6 +26,10 @@ export function LabelBreakdown({ tickets, title, sub, limit, onViewAll }: Props)
   const max = Math.max(1, ...rows.map((r) => r.count));
   const truncated = limit ? allRows.length - rows.length : 0;
 
+  function exportRows() {
+    exportToCsv('recurring-issue-categories', ['Label', 'Tickets'], allRows.map((r) => [r.label, r.count]));
+  }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -31,9 +37,12 @@ export function LabelBreakdown({ tickets, title, sub, limit, onViewAll }: Props)
           <div className="panel-title">{title ?? 'Recurring issue categories'}</div>
           <div className="panel-sub">{sub ?? 'Where tickets are coming from, by label'}</div>
         </div>
-        {truncated > 0 && onViewAll && (
-          <span className="panel-link" onClick={onViewAll}>View all {allRows.length} →</span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {truncated > 0 && onViewAll && (
+            <span className="panel-link" onClick={onViewAll}>View all {allRows.length} →</span>
+          )}
+          <button className="btn-ghost" onClick={exportRows} disabled={allRows.length === 0}><Download size={13} />CSV</button>
+        </div>
       </div>
       {rows.length === 0 && <div className="empty-state">No labeled tickets yet.</div>}
       {rows.map((r) => (

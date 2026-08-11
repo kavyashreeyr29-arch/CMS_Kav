@@ -1,9 +1,10 @@
 import { DragEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GripVertical, Layers } from 'lucide-react';
+import { Download, GripVertical, Layers } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { projectsApi } from '../api/projects';
-import { PrioChip } from '../components/ui/Chips';
+import { PrioChip, formatStatus } from '../components/ui/Chips';
+import { exportToCsv } from '../components/ui/exportCsv';
 import { Project } from '../types/project';
 import { Ticket, TicketStatus } from '../types/ticket';
 
@@ -122,6 +123,17 @@ export function Backlog() {
     );
   }
 
+  function exportBacklog() {
+    exportToCsv(
+      `backlog-${projectCode}`,
+      ['ID', 'Type', 'Title', 'Status', 'Stage', 'Priority', 'Parent Epic'],
+      items.map((t) => [
+        t.displayId, t.type, t.title, formatStatus(t.status), STATUS_TO_STAGE[t.status], t.priority,
+        t.type === 'Story' ? (epics.find((e) => e.id === t.parentTicketId)?.displayId ?? '') : '',
+      ]),
+    );
+  }
+
   return (
     <>
       <div className="filter-bar">
@@ -129,6 +141,7 @@ export function Backlog() {
           {projects.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
         </select>
         <div className="select-pill">{items.length} stories/epics</div>
+        <button className="btn-ghost" onClick={exportBacklog} disabled={items.length === 0}><Download size={13} />CSV</button>
       </div>
 
       <div className="restricted-banner" style={{ marginBottom: 12 }}>

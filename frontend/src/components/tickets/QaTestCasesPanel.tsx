@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ClipboardList, Paperclip, Plus, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Download, Paperclip, Plus, Trash2, XCircle } from 'lucide-react';
 import { ticketsApi } from '../../api/tickets';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { TestCase, TestCaseStatus, TicketAttachment } from '../../types/ticket';
 
 const STATUS_LABEL: Record<TestCaseStatus, string> = { pending: 'Pending', pass: 'Pass', fail: 'Fail', blocked: 'Blocked' };
@@ -61,10 +62,21 @@ export function QaTestCasesPanel({ ticketId, canManage, evidence, onEvidenceChan
 
   const passCount = cases.filter((c) => c.status === 'pass').length;
 
+  function exportCases() {
+    exportToCsv(
+      'qa-test-cases',
+      ['Title', 'Steps', 'Expected result', 'Status', 'Regression', 'Executor', 'Executed at'],
+      cases.map((c) => [c.title, c.steps ?? '', c.expectedResult ?? '', STATUS_LABEL[c.status], c.regressionFlag ? 'Yes' : 'No', c.executor?.name ?? '', c.executedAt ? new Date(c.executedAt).toLocaleString() : '']),
+    );
+  }
+
   return (
     <div style={{ marginBottom: 18 }}>
-      <div className="td-section-title">
-        <ClipboardList size={13} />QA testing ({cases.length}){cases.length > 0 && ` — ${passCount}/${cases.length} passing`}
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ClipboardList size={13} />QA testing ({cases.length}){cases.length > 0 && ` — ${passCount}/${cases.length} passing`}
+        </span>
+        <button className="btn-ghost" onClick={exportCases} disabled={cases.length === 0}><Download size={11} />CSV</button>
       </div>
 
       {loading ? (

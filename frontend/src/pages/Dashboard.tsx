@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  AlertTriangle, CheckCircle2, Clock, Flame, Gauge, Ticket as TicketIcon,
+  AlertTriangle, CheckCircle2, Clock, Download, Flame, Gauge, Ticket as TicketIcon,
   TrendingUp, Users as UsersIcon,
 } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
@@ -16,6 +16,7 @@ import { slaPoliciesApi, SlaPolicyRow } from '../api/slaPolicies';
 import { api } from '../api/client';
 import { KpiCard } from '../components/ui/KpiCard';
 import { PRIORITY_COLOR } from '../components/ui/Chips';
+import { exportToCsv } from '../components/ui/exportCsv';
 import { LabelBreakdown } from '../components/dashboard/LabelBreakdown';
 import { ActivityEntry, Ticket } from '../types/ticket';
 import { Project } from '../types/project';
@@ -216,6 +217,44 @@ export function Dashboard() {
 
   const ACTIVITY_LIMIT = 5;
 
+  // Every export below uses the full (un-truncated) underlying array, not
+  // the "top 5" slice the panel itself renders — the on-screen cap is for
+  // readability, the download shouldn't lose the rest of the data.
+  function exportRaisedBy() {
+    exportToCsv('tickets-raised-by', ['Category', 'Count'], raisedByRole.map((r) => [r.name, r.count]));
+  }
+  function exportAging() {
+    exportToCsv(
+      'ticket-ageing-by-project',
+      ['Project', 'Name', ...AGING_BUCKETS, 'Total open', 'SLA breached'],
+      allAgingByProject.map(({ proj, buckets, total, breached }) => [proj.code, proj.name, ...buckets, total, breached]),
+    );
+  }
+  function exportWorkload() {
+    exportToCsv('team-workload', ['Assignee', 'Hours (open work)'], allWorkload.map((w) => [w.name, Math.round(w.hours)]));
+  }
+  function exportProjectHealth() {
+    exportToCsv(
+      'project-health',
+      ['Project', 'Name', 'Open', 'Overdue', 'Health'],
+      allProjectHealth.map(({ proj, openCt, overdueCt, health }) => [proj.code, proj.name, openCt, overdueCt, health]),
+    );
+  }
+  function exportUpcomingDue() {
+    exportToCsv(
+      'upcoming-due-dates',
+      ['ID', 'Title', 'Priority', 'Due'],
+      allUpcomingDue.map((t) => [t.displayId, t.title, t.priority, t.dueDate!.slice(0, 10)]),
+    );
+  }
+  function exportActivity() {
+    exportToCsv(
+      'recent-activity',
+      ['Time', 'Actor', 'Action'],
+      scopedActivity.map((a) => [new Date(a.createdAt).toLocaleString(), a.actor?.name ?? '', a.actionText]),
+    );
+  }
+
   if (loading) return <div className="loading-state">Loading dashboard…</div>;
 
   return (
@@ -263,6 +302,7 @@ export function Dashboard() {
               <div className="panel-title">Tickets raised by</div>
               <div className="panel-sub">Who's actually filing tickets, by role — all statuses{projectFilter !== 'ALL' ? ` — ${projectFilter} only` : ''}</div>
             </div>
+            <button className="btn-ghost" onClick={exportRaisedBy} disabled={scopedTickets.length === 0}><Download size={13} />CSV</button>
           </div>
           <div className="mom-row" style={{ gridTemplateColumns: `repeat(${CATEGORY_ORDER.length}, 1fr)` }}>
             {raisedByRole.map((r) => (
@@ -323,6 +363,7 @@ export function Dashboard() {
                 {showAllAging ? 'Show less ←' : `View all ${allAgingByProject.length} →`}
               </span>
             )}
+            <button className="btn-ghost" onClick={exportAging} disabled={allAgingByProject.length === 0}><Download size={13} />CSV</button>
           </div>
           <table className="aging-table">
             <thead>
@@ -384,6 +425,7 @@ export function Dashboard() {
                 {showAllWorkload ? 'Show less ←' : `View all ${allWorkload.length} →`}
               </span>
             )}
+            <button className="btn-ghost" onClick={exportWorkload} disabled={allWorkload.length === 0}><Download size={13} />CSV</button>
           </div>
           {workload.map((w) => {
             const overloaded = w.hours > 32;
@@ -403,6 +445,7 @@ export function Dashboard() {
             {allProjectHealth.length > HEALTH_LIMIT && (
               <span className="panel-link" onClick={() => navigate('/analytics')}>View all {allProjectHealth.length} →</span>
             )}
+            <button className="btn-ghost" onClick={exportProjectHealth} disabled={allProjectHealth.length === 0}><Download size={13} />CSV</button>
           </div>
           {projectHealth.map(({ proj, openCt, overdueCt, health }) => (
             <div className="health-item" key={proj.code}>
@@ -419,9 +462,12 @@ export function Dashboard() {
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title">Upcoming due dates</div>
-            {allUpcomingDue.length > DUE_LIMIT && (
-              <span className="panel-link" onClick={() => navigate('/tickets')}>View all {allUpcomingDue.length} →</span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {allUpcomingDue.length > DUE_LIMIT && (
+                <span className="panel-link" onClick={() => navigate('/tickets')}>View all {allUpcomingDue.length} →</span>
+              )}
+              <button className="btn-ghost" onClick={exportUpcomingDue} disabled={allUpcomingDue.length === 0}><Download size={13} />CSV</button>
+            </div>
           </div>
           {upcomingDue.map((t) => {
             const daysUntil = Math.round((new Date(t.dueDate!).getTime() - Date.now()) / 86400000);
@@ -437,9 +483,12 @@ export function Dashboard() {
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title">Recent activity</div>
-            {scopedActivity.length > ACTIVITY_LIMIT && (
-              <span className="panel-link" onClick={() => navigate('/comms')}>View all {scopedActivity.length} →</span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {scopedActivity.length > ACTIVITY_LIMIT && (
+                <span className="panel-link" onClick={() => navigate('/comms')}>View all {scopedActivity.length} →</span>
+              )}
+              <button className="btn-ghost" onClick={exportActivity} disabled={scopedActivity.length === 0}><Download size={13} />CSV</button>
+            </div>
           </div>
           {scopedActivity.slice(0, ACTIVITY_LIMIT).map((a) => (
             <div className="activity-item" key={a.id}>

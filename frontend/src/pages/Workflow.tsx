@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Save, Trash2, GitBranch, ArrowRight } from 'lucide-react';
+import { Download, Plus, Save, Trash2, GitBranch, ArrowRight } from 'lucide-react';
 import { workflowApi, WorkflowTransitionRow, WorkflowTransitionInput, WORKFLOW_STATUSES } from '../api/workflow';
 import { formatStatus } from '../components/ui/Chips';
+import { exportToCsv } from '../components/ui/exportCsv';
 import { TicketStatus } from '../types/ticket';
 
 type GateKey = 'requiresAssignee' | 'requiresLinkedPr' | 'requiresApprovedPr' | 'requiresMergedPr' | 'requiresQaPass' | 'requiresApproval';
@@ -85,6 +86,14 @@ export function Workflow() {
     .map((from) => ({ from, targets: rows.filter((r) => r.fromStatus === from) }))
     .filter((g) => g.targets.length > 0);
 
+  function exportWorkflow() {
+    exportToCsv(
+      'workflow-transitions',
+      ['From', 'To', ...GATES.map((g) => g.label), 'Approval label'],
+      rows.map((r) => [formatStatus(r.fromStatus), formatStatus(r.toStatus), ...GATES.map((g) => (r[g.key] ? 'Yes' : 'No')), r.approvalLabel ?? '']),
+    );
+  }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -92,9 +101,12 @@ export function Workflow() {
           <div className="panel-title"><GitBranch size={15} style={{ verticalAlign: -2, marginRight: 6 }} />Workflow &amp; stage gates</div>
           <div className="panel-sub">Configure which status transitions are allowed, and the conditions that must be met before each move. GitHub auto-transitions respect these same gates.</div>
         </div>
-        <button className="btn-primary" onClick={save} disabled={saving}>
-          <Save size={14} />{saving ? 'Saving…' : 'Save workflow'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-ghost" onClick={exportWorkflow} disabled={rows.length === 0}><Download size={13} />CSV</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            <Save size={14} />{saving ? 'Saving…' : 'Save workflow'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="field-error" style={{ marginBottom: 12 }}>{error}</div>}

@@ -1,7 +1,8 @@
-import { Folder, Briefcase } from 'lucide-react';
+import { Folder, Briefcase, Download } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { AttachmentUploader } from '../ui/AttachmentUploader';
 import { AttachmentGrid } from '../ui/AttachmentGrid';
+import { exportToCsv } from '../ui/exportCsv';
 import { Project } from '../../types/project';
 
 interface Props {
@@ -13,9 +14,20 @@ export function ProjectDocsTab({ project, onChange }: Props) {
   const generalDocs = project.documents.filter((d) => !d.section);
   const commercialDocs = project.documents.filter((d) => d.section === 'commercial');
 
+  function exportManifest() {
+    exportToCsv(
+      `${project.code}-documents`,
+      ['File name', 'Section', 'Type', 'Size (bytes)', 'Uploaded'],
+      project.documents.map((d) => [d.fileName, d.section ?? 'general', d.mimeKind, d.fileSize, new Date(d.createdAt).toLocaleString()]),
+    );
+  }
+
   return (
     <div>
-      <div className="td-section-title"><Folder size={13} />Document folder ({generalDocs.length})</div>
+      <div className="td-section-title" style={{ justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Folder size={13} />Document folder ({generalDocs.length})</span>
+        <button className="btn-ghost" onClick={exportManifest} disabled={project.documents.length === 0}><Download size={12} />Export manifest CSV</button>
+      </div>
       <AttachmentGrid
         files={generalDocs}
         getDownloadUrl={(documentId) => projectsApi.getDocumentDownloadUrl(project.code, documentId)}
