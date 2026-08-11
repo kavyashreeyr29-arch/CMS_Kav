@@ -40,7 +40,7 @@ body {
 /* Sidebar */
 /* Sidebar — single source of navigation (see CLAUDE.md: this replaced a
    duplicate icon-sidebar + text-tabs setup that showed the same items twice). */
-.sidebar { width: 216px; background: var(--ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; flex-shrink: 0; overflow-y: auto; }
+.sidebar { width: 216px; background: var(--ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; flex-shrink: 0; overflow-y: auto; position: sticky; top: 0; height: 100vh; align-self: flex-start; }
 .sidebar .logo { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; box-shadow: 0 4px 10px rgba(0,64,83,0.4); flex-shrink: 0; }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; margin-bottom: 20px; }
 .sidebar-brand-name { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 14px; color: #fff; }
