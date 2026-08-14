@@ -24,6 +24,21 @@ it doesn't bypass the visibility gate.
   history so "who added Ops to this ticket, and when" is answerable the same way any other change is.
 - Ticket detail: new "Collaborating teams" panel (mirrors the existing Watchers panel — chips + add/remove)
   showing which other teams have visibility and letting an eligible role tag or untag one.
+- A "N teams" badge (`CrossTeamBadge`, `components/ui/Chips.tsx`) on every surface a ticket is browsed from
+  — Tickets list, Kanban cards, and the Ticket detail header — so a tagged ticket is visible at a glance
+  without opening it. Ticket detail's badge shows the actual team names on hover; the list/board versions
+  show just the count (they don't otherwise load team data, and the count alone answers "is this cross-team
+  or not").
+- Seed data: the feature had nothing to look at on a fresh login — no seeded ticket had `collaboratingTeamIds`
+  set, and there was only ever one seeded team (Delivery Squad), so there was no second team to tag anything
+  with in the first place. Added a second team ("Platform Ops", led by a new `R. Fonseca` — a second
+  Lead-seniority account was required, V. Kapoor alone can't demonstrate a *cross*-team scenario) and a
+  realistic demo ticket (`ATLAS-...`, "Redemption points not credited after coupon applied", raised via
+  Call Center, tagged for Platform Ops) so logging in as Call Center shows the badge and R. Fonseca can
+  actually open a ticket outside Platform Ops' own projects.
+  Note: Ops/Call Center/Customer Success accounts are `scope: 'source'` (see all tickets from their own
+  channel org-wide already), not `scope: 'team'` — this feature's *visibility* effect only changes anything
+  for Lead/Manager-seniority accounts; the badge itself is visible to anyone who can already see the ticket.
 
 ### Design notes
 - Deliberately manual/triage-time tagging, not auto-inferred from ticket type or category — which teams a

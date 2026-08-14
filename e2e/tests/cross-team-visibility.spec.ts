@@ -119,4 +119,43 @@ test.describe('Cross-team ticket visibility — UI', () => {
     await request.delete(`${API_BASE}/tickets/${ticket.id}`, { headers: auth(adminT) });
     await request.delete(`${API_BASE}/teams/${team.id}`, { headers: auth(adminT) });
   });
+
+  test('a tagged ticket shows a "N teams" badge on Ticket detail, the Tickets list, and the Kanban board', async ({ page, request }) => {
+    const adminT = await token(request, SEED_ADMIN_EMAIL);
+    const suffix = Date.now();
+    const team = await (await request.post(`${API_BASE}/teams`, {
+      headers: auth(adminT), data: { name: `E2E Badge Team ${suffix}` },
+    })).json();
+    // dueDate far in the past — the Tickets list's default sort is
+    // dueDate ascending, so this guarantees page 1 regardless of how many
+    // other tickets exist org-wide.
+    const ticket = await (await request.post(`${API_BASE}/tickets`, {
+      headers: auth(adminT), data: { projectCode: 'ATLAS', title: `E2E Badge ticket ${suffix}`, type: 'Task', priority: 'Medium', source: 'CallCenter', dueDate: '2020-01-01' },
+    })).json();
+
+    // No badge before any team is tagged.
+    await login(page);
+    await page.goto(`/tickets/${ticket.id}`);
+    await expect(page.locator('.ticket-detail-main .label-chip', { hasText: 'team' })).toHaveCount(0);
+
+    await request.patch(`${API_BASE}/tickets/${ticket.id}/collaborating-teams`, {
+      headers: auth(adminT), data: { teamIds: [team.id] },
+    });
+
+    await page.reload();
+    const headerBadge = page.locator('.ticket-detail-main .label-chip', { hasText: '1 team' });
+    await expect(headerBadge).toBeVisible();
+    await expect(headerBadge).toHaveAttribute('title', `Also visible to: ${team.name}`);
+
+    await page.goto('/tickets');
+    const row = page.locator('tr', { hasText: ticket.displayId });
+    await expect(row.locator('.label-chip', { hasText: '1 team' })).toBeVisible();
+
+    await page.goto('/kanban');
+    const card = page.locator('.kcard', { hasText: ticket.displayId });
+    await expect(card.locator('.label-chip', { hasText: '1 team' })).toBeVisible();
+
+    await request.delete(`${API_BASE}/tickets/${ticket.id}`, { headers: auth(adminT) });
+    await request.delete(`${API_BASE}/teams/${team.id}`, { headers: auth(adminT) });
+  });
 });

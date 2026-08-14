@@ -1,4 +1,4 @@
-import { Circle, Tag } from 'lucide-react';
+import { Building2, Circle, Tag } from 'lucide-react';
 import { colorForLabel } from './colorForLabel';
 
 // Low priority was #7C8598 (gray text on a ~13%-opacity gray tint) — flagged
@@ -39,6 +39,22 @@ export function LabelChip({ l }: { l: string }) {
     <span className="label-chip" style={{ background: `${color}1a`, color }}>
       <Tag size={9} />
       {l}
+    </span>
+  );
+}
+
+// Flags a ticket tagged with Ticket.collaboratingTeamIds (CHANGELOG.md
+// "cross-team ticket visibility") — self-guards like SlaBadge so callers
+// can render it unconditionally.
+export function CrossTeamBadge({ count, names }: { count: number; names?: string[] }) {
+  if (count === 0) return null;
+  const title = names?.length
+    ? `Also visible to: ${names.join(', ')}`
+    : `Tagged for ${count} other team${count === 1 ? '' : 's'} to help resolve`;
+  return (
+    <span className="label-chip" style={{ background: '#8250DF1a', color: '#8250DF' }} title={title}>
+      <Building2 size={9} />
+      {count} team{count === 1 ? '' : 's'}
     </span>
   );
 }

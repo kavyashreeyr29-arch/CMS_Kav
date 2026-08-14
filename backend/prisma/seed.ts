@@ -57,6 +57,11 @@ const PEOPLE: { name: string; roleId: string; seniority?: string }[] = [
   { name: 'S. Iyer', roleId: 'pm', seniority: 'manager' },
   { name: 'A. Fernandes', roleId: 'pm', seniority: 'manager' },
   { name: 'V. Kapoor', roleId: 'lead', seniority: 'lead' },
+  // A second team-scoped Lead so cross-team ticket visibility (CHANGELOG.md
+  // "Collaborating teams") has two real teams to demo — V. Kapoor alone
+  // can't show a *cross*-team scenario, there's nowhere else to grant
+  // visibility to.
+  { name: 'R. Fonseca', roleId: 'senior_developer', seniority: 'lead' },
   { name: 'P. Sharma', roleId: 'senior_developer', seniority: 'senior_developer' },
   { name: 'M. Thomas', roleId: 'senior_developer', seniority: 'senior_developer' },
   { name: 'J. Ortiz', roleId: 'junior_developer', seniority: 'junior_developer' },
@@ -76,6 +81,10 @@ const PEOPLE: { name: string; roleId: string; seniority?: string }[] = [
 // Team rows at all, so the Lead role always saw an empty dashboard and
 // GET /reports/work-hours 500'd on an empty IN() clause; see CHANGELOG).
 const TEAM = { name: 'Delivery Squad', lead: 'V. Kapoor', members: ['V. Kapoor', 'P. Sharma', 'J. Ortiz', 'F. Haddad'] };
+// Second team purely to demo cross-team ticket visibility — R. Fonseca has
+// no other tickets/projects of their own, they exist so there's a distinct
+// team to tag as a collaborator on a Delivery-Squad-owned ticket.
+const OPS_TEAM = { name: 'Platform Ops', lead: 'R. Fonseca', members: ['R. Fonseca'] };
 
 // One project per SDLC phase (bar RequirementAnalysis/OnHold, covered by
 // the docs/notes narrative below instead) so the demo shows every stage
@@ -233,6 +242,20 @@ async function main() {
       where: { userId_teamId: { userId, teamId: team.id } },
       update: {},
       create: { userId, teamId: team.id },
+    });
+  }
+
+  const opsTeam = await prisma.team.upsert({
+    where: { id: 'seed-team-platform-ops' },
+    update: { leadUserId: userByName.get(OPS_TEAM.lead)! },
+    create: { id: 'seed-team-platform-ops', name: OPS_TEAM.name, leadUserId: userByName.get(OPS_TEAM.lead)! },
+  });
+  for (const memberName of OPS_TEAM.members) {
+    const userId = userByName.get(memberName)!;
+    await prisma.teamMembership.upsert({
+      where: { userId_teamId: { userId, teamId: opsTeam.id } },
+      update: {},
+      create: { userId, teamId: opsTeam.id },
     });
   }
 
@@ -751,6 +774,44 @@ async function main() {
         },
       });
     }
+  }
+
+  // Cross-team ticket visibility demo (CHANGELOG.md "Collaborating teams")
+  // — a call-center-raised redemption issue that lives in Delivery Squad's
+  // ATLAS project but is tagged for Platform Ops too, so R. Fonseca (Platform
+  // Ops' Lead, otherwise hard-scoped to only their own team's projects) can
+  // actually open it, and the "N teams" badge has something real to show on
+  // Tickets/Kanban/detail for every role, not just team-scoped Leads.
+  await prisma.ticket.deleteMany({ where: { title: 'Redemption points not credited after coupon applied' } });
+  if (atlasProject) {
+    const redemptionLabel = labelIds.find((l) => l.name === 'Redemption Issue');
+    const seq = await prisma.project.update({ where: { id: atlasProject.id }, data: { ticketSeq: { increment: 1 } } });
+    const redemptionTicket = await prisma.ticket.create({
+      data: {
+        displayId: `${atlasProject.code}-${seq.ticketSeq}`,
+        projectId: atlasProject.id,
+        title: 'Redemption points not credited after coupon applied',
+        description: 'Customer redeemed a loyalty coupon at checkout but the points never landed on their balance — needs Delivery Squad to check the redemption service and Platform Ops to confirm the ledger job actually ran.',
+        type: TicketType.Bug,
+        priority: Priority.High,
+        status: TicketStatus.InProgress,
+        source: TicketSource.CallCenter,
+        labelId: redemptionLabel?.id,
+        reporterUserId: userByName.get('R. Gupta')!,
+        assigneeUserId: userByName.get('P. Sharma')!,
+        collaboratingTeamIds: [opsTeam.id],
+      },
+    });
+    await prisma.ticketFieldChange.create({
+      data: {
+        ticketId: redemptionTicket.id,
+        changedBy: userByName.get('S. Iyer')!,
+        fieldName: 'Collaborating teams',
+        oldValue: null,
+        newValue: OPS_TEAM.name,
+        changedAt: daysAgo(1),
+      },
+    });
   }
 
   // Recent activity (CHANGELOG.md) — seed.ts creates tickets directly via

@@ -3,7 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { GripVertical, Timer } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { workflowApi, WorkflowTransitionRow } from '../api/workflow';
-import { PrioChip, formatStatus } from '../components/ui/Chips';
+import { PrioChip, CrossTeamBadge, formatStatus } from '../components/ui/Chips';
 import { ApiError } from '../api/client';
 import { Ticket } from '../types/ticket';
 import { ProjectFilterContext } from '../components/layout/AppShell';
@@ -129,6 +129,9 @@ export function Kanban() {
         <div className="kcard-timer" style={{ marginBottom: 6 }}>
           <span className="kcard-timer-dot" /><Timer size={9} />Timer running
         </div>
+      )}
+      {t.collaboratingTeamIds.length > 0 && (
+        <div style={{ marginBottom: 6 }}><CrossTeamBadge count={t.collaboratingTeamIds.length} /></div>
       )}
       <div className="kcard-foot">
         <PrioChip p={t.priority} small />

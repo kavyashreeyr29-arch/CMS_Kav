@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Clock, Download, Lock, Paperclip, RotateCc
 import { ticketsApi } from '../api/tickets';
 import { approvalsApi } from '../api/approvals';
 import { useAuth } from '../auth/AuthContext';
-import { PrioChip, SourceChip, StatusDot, LabelChip, formatStatus, formatSource } from '../components/ui/Chips';
+import { PrioChip, SourceChip, StatusDot, LabelChip, CrossTeamBadge, formatStatus, formatSource } from '../components/ui/Chips';
 import { SlaBadge } from '../components/ui/SlaBadge';
 import { KpiCard } from '../components/ui/KpiCard';
 import { formatDuration } from '../components/ui/formatDuration';
@@ -224,6 +224,7 @@ export function TicketsList() {
                       <div>{t.title}</div>
                       {t.description && <div className="ticket-desc-snip" title={t.description}>{t.description}</div>}
                       {t.label && <LabelChip l={t.label.name} />}
+                      <CrossTeamBadge count={t.collaboratingTeamIds.length} />
                     </td>
                     <td><SourceChip s={t.source} /></td>
                     <td><PrioChip p={t.priority} /></td>

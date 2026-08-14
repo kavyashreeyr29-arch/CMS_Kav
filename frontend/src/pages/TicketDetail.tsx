@@ -11,7 +11,7 @@ import { businessCategoriesApi, BusinessCategoryRow } from '../api/businessCateg
 import { teamsApi, TeamRow } from '../api/teams';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
-import { PrioChip, SourceChip, LabelChip, formatStatus } from '../components/ui/Chips';
+import { PrioChip, SourceChip, LabelChip, CrossTeamBadge, formatStatus } from '../components/ui/Chips';
 import { SlaBadge } from '../components/ui/SlaBadge';
 import { AttachmentUploader } from '../components/ui/AttachmentUploader';
 import { AttachmentGrid } from '../components/ui/AttachmentGrid';
@@ -316,6 +316,10 @@ export function TicketDetail() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div className="tid mono" style={{ fontSize: 13 }}>{ticket.displayId}</div>
             <SlaBadge slaBreached={ticket.slaBreached} slaBreachRisk={ticket.slaBreachRisk} />
+            <CrossTeamBadge
+              count={ticket.collaboratingTeamIds.length}
+              names={ticket.collaboratingTeamIds.map((tid) => teamById.get(tid)?.name ?? tid)}
+            />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button className="btn-ghost" onClick={copyLink} title="Copy a link to this ticket">
