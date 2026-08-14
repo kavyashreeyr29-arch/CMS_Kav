@@ -3,6 +3,36 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-14 — Cross-team ticket visibility ("Collaborating teams")
+
+A ticket a call-center agent raises on, say, a redemption issue can need both Tech and Ops to resolve it,
+even though it only lives in one team's project. Previously there was no way for a team that didn't own
+the ticket to actually see it: a Lead/Manager (the only role tier hard-scoped to their own team — everyone
+else already has org-wide `scope: 'all'` by default, see `effective-permissions.ts`) got a flat `404` on
+any ticket outside their own team's projects, and the existing Watchers feature only sends notifications,
+it doesn't bypass the visibility gate.
+
+### Added
+- `Ticket.collaboratingTeamIds` (`String[]`, default `[]`) — an unordered list of other teams tagged as
+  needed for resolution. Not limited to two teams or a fixed pairing (Tech+Ops, Tech+Ops+CallCenter,
+  Tech+CS, ...) — any combination.
+- `ticketVisibilityWhere`'s `'team'` scope now grants access if *either* the ticket's own project belongs
+  to the Lead/Manager's team *or* their team is in `collaboratingTeamIds` — the one function CLAUDE.md
+  flags as "the thing to protect," extended rather than bypassed.
+- `PATCH /tickets/:id/collaborating-teams` — sets the full list (admin/PM/Director/Lead/Manager, same
+  `canManageStructure` gate the sub-task/re-parent actions already use); logged to the ticket's field
+  history so "who added Ops to this ticket, and when" is answerable the same way any other change is.
+- Ticket detail: new "Collaborating teams" panel (mirrors the existing Watchers panel — chips + add/remove)
+  showing which other teams have visibility and letting an eligible role tag or untag one.
+
+### Design notes
+- Deliberately manual/triage-time tagging, not auto-inferred from ticket type or category — which teams a
+  given issue needs isn't predictable enough to guess reliably.
+- Considered splitting into a parent ticket + one sub-task per team (the existing sub-task/linking feature
+  needs zero backend changes for that) instead, but rejected it: it fragments "what's the current status,
+  pending on whom" across multiple tickets instead of leaving one shared source of truth, which is exactly
+  what was being asked for.
+
 ## 2026-08-11 — Admin-only delete for Teams, Tickets, and Projects
 
 Labels already had a delete option (soft-delete, gated on `manageLabels`); Teams, Tickets, and Projects

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Activity, Check, Clock, Copy, Download, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
+  Activity, Building2, Check, Clock, Copy, Download, Edit3, GitBranchPlus, History, Layers, MessageSquare, Paperclip, PlayCircle,
   RotateCcw, Send, StopCircle, Timer, Trash2, Unlink, Users as UsersIcon, X,
 } from 'lucide-react';
 import { ticketsApi } from '../api/tickets';
 import { usersApi, UserRow } from '../api/users';
 import { labelsApi, LabelRow } from '../api/labels';
 import { businessCategoriesApi, BusinessCategoryRow } from '../api/businessCategories';
+import { teamsApi, TeamRow } from '../api/teams';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { PrioChip, SourceChip, LabelChip, formatStatus } from '../components/ui/Chips';
@@ -62,6 +63,8 @@ export function TicketDetail() {
   const [showSubtaskModal, setShowSubtaskModal] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [teams, setTeams] = useState<TeamRow[]>([]);
+  const [teamToAdd, setTeamToAdd] = useState('');
 
   function load() {
     if (!id) return;
@@ -76,6 +79,7 @@ export function TicketDetail() {
   useEffect(() => { labelsApi.list().then(setLabels).catch(() => {}); }, []);
   useEffect(() => { businessCategoriesApi.list().then(setBusinessCategories).catch(() => {}); }, []);
   useEffect(() => { workflowApi.list().then(setWorkflow).catch(() => {}); }, []);
+  useEffect(() => { teamsApi.list().then(setTeams).catch(() => {}); }, []);
 
   if (loading) return <div className="loading-state">Loading ticket…</div>;
   if (error || !ticket) return <div className="error-state">{error || 'Ticket not found.'}</div>;
@@ -101,6 +105,8 @@ export function TicketDetail() {
     : null;
   const userById = new Map(users.map((u) => [u.id, u]));
   const watcherCandidates = users.filter((u) => !ticket.watcherUserIds.includes(u.id));
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const collaboratingTeamCandidates = teams.filter((t) => !ticket.collaboratingTeamIds.includes(t.id));
 
   // PRD Phase 2 §3.2 — only the reporter or a full-access (scope: 'all'/'team')
   // role can edit, and only while the ticket is Open/Reopened; enforced again
@@ -215,6 +221,29 @@ export function TicketDetail() {
     try {
       await ticketsApi.addWatcher(id, watcherToAdd);
       setWatcherToAdd('');
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addCollaboratingTeam() {
+    if (!id || !teamToAdd) return;
+    setBusy(true);
+    try {
+      await ticketsApi.linkCollaboratingTeams(id, [...ticket!.collaboratingTeamIds, teamToAdd]);
+      setTeamToAdd('');
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeCollaboratingTeam(teamId: string) {
+    if (!id) return;
+    setBusy(true);
+    try {
+      await ticketsApi.linkCollaboratingTeams(id, ticket!.collaboratingTeamIds.filter((t) => t !== teamId));
       load();
     } finally {
       setBusy(false);
@@ -533,7 +562,7 @@ export function TicketDetail() {
           </div>
         </div>
 
-        <div className="panel">
+        <div className="panel" data-testid="td-watchers">
           <div className="td-section-title"><UsersIcon size={13} />Watchers ({ticket.watcherUserIds.length})</div>
           <div style={{ marginBottom: 8 }}>
             {ticket.watcherUserIds.map((uid) => (
@@ -551,6 +580,36 @@ export function TicketDetail() {
             </div>
           )}
         </div>
+
+        {(canManageStructure || ticket.collaboratingTeamIds.length > 0) && (
+          <div className="panel" data-testid="td-collaborating-teams">
+            <div className="td-section-title" title="Other teams that need visibility to help resolve this ticket, beyond its own project's team">
+              <Building2 size={13} />Collaborating teams ({ticket.collaboratingTeamIds.length})
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              {ticket.collaboratingTeamIds.map((tid) => (
+                <span key={tid} className="watcher-chip active">
+                  {teamById.get(tid)?.name ?? tid}
+                  {canManageStructure && (
+                    <X size={11} style={{ marginLeft: 4, cursor: 'pointer' }} onClick={() => removeCollaboratingTeam(tid)} />
+                  )}
+                </span>
+              ))}
+              {ticket.collaboratingTeamIds.length === 0 && (
+                <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>Only this ticket's own project team has visibility.</span>
+              )}
+            </div>
+            {canManageStructure && collaboratingTeamCandidates.length > 0 && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <select value={teamToAdd} onChange={(e) => setTeamToAdd(e.target.value)} style={{ maxWidth: 220 }} aria-label="Add a collaborating team">
+                  <option value="">Add a team…</option>
+                  {collaboratingTeamCandidates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <button className="btn-ghost" onClick={addCollaboratingTeam} disabled={!teamToAdd || busy}>Add</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {permissions.scope === 'all' && (
           <div className="panel">

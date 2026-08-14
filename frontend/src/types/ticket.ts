@@ -161,6 +161,10 @@ export interface Ticket {
   assigneeId: string | null;
   assigneeDisplay: string | null;
   watcherUserIds: string[];
+  // Other teams tagged as needed for resolution (e.g. a call-center-raised
+  // issue that's part Tech, part Ops) — widens visibility for a Lead/
+  // Manager on any of these teams beyond the ticket's own project/team.
+  collaboratingTeamIds: string[];
   startDate: string | null;
   dueDate: string | null;
   storyPoints: number | null;

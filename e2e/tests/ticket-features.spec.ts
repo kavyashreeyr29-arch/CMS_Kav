@@ -12,12 +12,12 @@ test.describe('Ticket detail — watchers, SLA, activity', () => {
     await page.locator('table.data-table tbody tr').first().click();
     await expect(page).toHaveURL(/\/tickets\/.+/);
 
-    const watcherTitle = page.locator('.td-section-title', { hasText: 'Watchers (' });
+    const watchersPanel = page.getByTestId('td-watchers');
+    const watcherTitle = watchersPanel.locator('.td-section-title', { hasText: 'Watchers (' });
     const beforeText = await watcherTitle.textContent();
 
-    const addWatcherSelect = page.locator('select').filter({ has: page.locator('option', { hasText: 'Add a watcher' }) });
-    await addWatcherSelect.selectOption({ index: 1 });
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await watchersPanel.locator('select').selectOption({ index: 1 });
+    await watchersPanel.getByRole('button', { name: 'Add', exact: true }).click();
 
     await expect(watcherTitle).not.toHaveText(beforeText ?? '', { timeout: 10000 });
     await expect(page.locator('.watcher-chip.active').first()).toBeVisible();

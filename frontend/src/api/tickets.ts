@@ -26,6 +26,7 @@ export const ticketsApi = {
   linkCampaign: (id: string, campaignId: string | null) => api.patch<Ticket>(`/tickets/${id}/campaign`, { campaignId }),
   linkReward: (id: string, rewardId: string | null) => api.patch<Ticket>(`/tickets/${id}/reward`, { rewardId }),
   linkParent: (id: string, parentTicketId: string | null) => api.patch<Ticket>(`/tickets/${id}/parent`, { parentTicketId }),
+  linkCollaboratingTeams: (id: string, teamIds: string[]) => api.patch<Ticket>(`/tickets/${id}/collaborating-teams`, { teamIds }),
   addComment: (id: string, body: string) => api.post<TicketComment>(`/tickets/${id}/comments`, { body }),
   requestAttachmentUploadUrl: (id: string, fileName: string) =>
     api.get<{ uploadUrl: string; storageKey: string }>(`/tickets/${id}/attachments/upload-url`, { fileName }),

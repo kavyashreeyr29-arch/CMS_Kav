@@ -463,6 +463,13 @@ model Ticket {
   reporterUserId   String       @map("reporter_user_id")
   assigneeUserId   String?      @map("assignee_user_id")
   watcherUserIds   String[]     @map("watcher_user_ids")
+  // A ticket can need more than one team to resolve it (e.g. a call-center-
+  // raised redemption issue that's part Tech, part Ops) — this is separate
+  // from the ticket's own project/team, which stays the "home" team.
+  // Extends ticketVisibilityWhere's 'team' scope so a Lead/Manager on any
+  // listed team can see the ticket even though it lives in another team's
+  // project, without loosening visibility for anyone else.
+  collaboratingTeamIds String[]  @default([]) @map("collaborating_team_ids")
   startDate        DateTime?    @map("start_date")
   dueDate          DateTime?    @map("due_date")
   storyPoints      Decimal?     @map("story_points")

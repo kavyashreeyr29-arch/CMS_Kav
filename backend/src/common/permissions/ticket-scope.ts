@@ -16,7 +16,16 @@ export function ticketVisibilityWhere(
     case 'all':
       return {};
     case 'team':
-      return { project: { teamId: { in: user.ledTeamIds } } };
+      // A ticket homed in another team's project is still visible if this
+      // Lead/Manager's team is tagged as a collaborator on it (e.g. a
+      // call-center-raised issue that needs both Tech and Ops) — see
+      // Ticket.collaboratingTeamIds.
+      return {
+        OR: [
+          { project: { teamId: { in: user.ledTeamIds } } },
+          { collaboratingTeamIds: { hasSome: user.ledTeamIds } },
+        ],
+      };
     case 'source': {
       const source = SOURCE_BY_ROLE[user.baseRoleId as RoleId];
       return source ? { source: source as never } : { id: { equals: '__none__' } };

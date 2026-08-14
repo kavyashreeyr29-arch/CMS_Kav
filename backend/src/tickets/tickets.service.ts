@@ -408,6 +408,33 @@ export class TicketsService {
   }
 
   /**
+   * Tags other teams as collaborators on this ticket — e.g. a call-center-
+   * raised redemption issue that needs both Tech and Ops. Widens
+   * ticketVisibilityWhere's 'team' scope (see ticket-scope.ts) so a
+   * Lead/Manager on any listed team can actually open the ticket, not just
+   * get notified about it the way a watcher would.
+   */
+  async linkCollaboratingTeams(id: string, user: AuthenticatedUser, perms: RolePermissions, teamIds: string[]) {
+    const ticket = await this.mustFindRaw(id, user, perms);
+    const uniqueTeamIds = [...new Set(teamIds)];
+    if (uniqueTeamIds.length) {
+      const found = await this.prisma.team.count({ where: { id: { in: uniqueTeamIds } } });
+      if (found !== uniqueTeamIds.length) throw new BadRequestException('One or more teams not found');
+    }
+
+    const allTeamIds = [...new Set([...ticket.collaboratingTeamIds, ...uniqueTeamIds])];
+    const teams = await this.prisma.team.findMany({ where: { id: { in: allTeamIds } }, select: { id: true, name: true } });
+    const nameById = new Map(teams.map((t) => [t.id, t.name]));
+    const describe = (ids: string[]) => ids.map((tid) => nameById.get(tid) ?? tid).join(', ');
+
+    const updated = await this.prisma.ticket.update({
+      where: { id }, data: { collaboratingTeamIds: uniqueTeamIds }, include: TICKET_INCLUDE,
+    });
+    await this.recordFieldChange(id, user.id, 'Collaborating teams', describe(ticket.collaboratingTeamIds), describe(uniqueTeamIds));
+    return serializeTicketForViewer(updated, perms);
+  }
+
+  /**
    * "Convert to a standalone ticket" (parentTicketId: null) and, more
    * generally, re-parenting a ticket after creation — CreateTicketDto
    * already accepts parentTicketId up front, but there was previously no
