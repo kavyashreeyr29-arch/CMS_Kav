@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Plus, Paperclip } from 'lucide-react';
+import { X, Plus, Paperclip, Users as UsersIcon } from 'lucide-react';
 import { ticketsApi } from '../../api/tickets';
 import { projectsApi } from '../../api/projects';
 import { labelsApi, LabelRow } from '../../api/labels';
@@ -75,6 +75,7 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode, subt
   const [submitting, setSubmitting] = useState(false);
   const [stagingId] = useState(newStagingId);
   const [stagedFiles, setStagedFiles] = useState<UploadedFileMeta[]>([]);
+  const [showWatcherPicker, setShowWatcherPicker] = useState(false);
 
   const [form, setForm] = useState({
     projectCode: subtaskOf?.projectCode ?? defaultProjectCode ?? '',
@@ -104,7 +105,11 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode, subt
     });
     labelsApi.list().then(setLabels);
     businessCategoriesApi.list().then(setBusinessCategories);
-    if (showWatchers) usersApi.list().then(setUsers);
+    // Excludes disabled users — an offboarded/deactivated person (or a
+    // disabled auto-provisioned Client from email intake) shouldn't be
+    // offered as an assignee or watcher, even though GET /users itself
+    // still returns them (the Users admin page needs to, to re-enable one).
+    if (showWatchers) usersApi.list().then((res) => setUsers(res.filter((u) => u.status !== 'disabled')));
     slaPoliciesApi.list().then(setSlaPolicies).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -288,19 +293,35 @@ export function CreateTicketModal({ onClose, onCreated, defaultProjectCode, subt
           {showWatchers && (
           <div className="field full">
             <label id="ct-watchers-label">Watchers (get notified on updates)</label>
-            <div role="group" aria-labelledby="ct-watchers-label">
-              {users.filter((u) => u.id !== form.assigneeUserId).map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  className={`watcher-chip ${form.watcherUserIds.includes(u.id) ? 'active' : ''}`}
-                  onClick={() => toggleWatcher(u.id)}
-                  aria-pressed={form.watcherUserIds.includes(u.id)}
-                >
-                  {u.name}
-                </button>
-              ))}
+            <div role="group" aria-labelledby="ct-watchers-label" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {form.watcherUserIds.map((id) => {
+                const u = users.find((candidate) => candidate.id === id);
+                if (!u) return null;
+                return (
+                  <button key={u.id} type="button" className="watcher-chip active" onClick={() => toggleWatcher(u.id)} aria-pressed>
+                    {u.name}
+                  </button>
+                );
+              })}
+              <button type="button" className="btn-ghost" onClick={() => setShowWatcherPicker((v) => !v)}>
+                <UsersIcon size={13} />{showWatcherPicker ? 'Hide' : 'Add watchers'}
+              </button>
             </div>
+            {showWatcherPicker && (
+              <div role="group" aria-labelledby="ct-watchers-label" style={{ marginTop: 8 }}>
+                {users.filter((u) => u.id !== form.assigneeUserId).map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className={`watcher-chip ${form.watcherUserIds.includes(u.id) ? 'active' : ''}`}
+                    onClick={() => toggleWatcher(u.id)}
+                    aria-pressed={form.watcherUserIds.includes(u.id)}
+                  >
+                    {u.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           )}
           <div className="field full">

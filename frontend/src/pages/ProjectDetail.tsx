@@ -69,7 +69,9 @@ export function ProjectDetail() {
   }
 
   useEffect(load, [code]);
-  useEffect(() => { usersApi.list().then(setUsers).catch(() => {}); }, []);
+  // Excludes disabled users from the member-add picker below — see the
+  // same fix in CreateTicketModal.tsx.
+  useEffect(() => { usersApi.list().then((res) => setUsers(res.filter((u) => u.status !== 'disabled'))).catch(() => {}); }, []);
 
   // Only the very first load blanks the page — background refreshes (after
   // linking a ticket, adding a member, uploading a file, etc.) update in

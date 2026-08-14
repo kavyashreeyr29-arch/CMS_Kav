@@ -20,8 +20,10 @@ export function TeamsAdmin() {
 
   function load() {
     setLoading(true);
+    // Excludes disabled users from the lead/member pickers below — see the
+    // same fix in CreateTicketModal.tsx.
     Promise.all([teamsApi.list(), usersApi.list()])
-      .then(([t, u]) => { setTeams(t); setUsers(u); })
+      .then(([t, u]) => { setTeams(t); setUsers(u.filter((candidate) => candidate.status !== 'disabled')); })
       .finally(() => setLoading(false));
   }
   useEffect(load, []);

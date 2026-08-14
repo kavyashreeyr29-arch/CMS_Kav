@@ -75,7 +75,9 @@ export function TicketDetail() {
   }
 
   useEffect(load, [id]);
-  useEffect(() => { usersApi.list().then(setUsers).catch(() => {}); }, []);
+  // Excludes disabled users from the assignee/watcher pickers below — see
+  // the same fix in CreateTicketModal.tsx.
+  useEffect(() => { usersApi.list().then((res) => setUsers(res.filter((u) => u.status !== 'disabled'))).catch(() => {}); }, []);
   useEffect(() => { labelsApi.list().then(setLabels).catch(() => {}); }, []);
   useEffect(() => { businessCategoriesApi.list().then(setBusinessCategories).catch(() => {}); }, []);
   useEffect(() => { workflowApi.list().then(setWorkflow).catch(() => {}); }, []);

@@ -3,6 +3,32 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-14 — Collapse the Watchers picker; fix a real user-list leak it exposed
+
+A screenshot of the New sub-task modal showed the Watchers picker as a wall of ~80 chips — most of them
+"E2e Intake ..." / "E2e Intake Repeat ..." names, not real people.
+
+### Fixed — two real bugs found while looking into it
+- `email-intake.spec.ts` calls `POST /email-intake/inbound` with a unique `Date.now()`-based sender email on
+  every run, auto-provisioning a brand-new Client user each time (`nameFromEmail()` turns
+  `e2e-intake-1786...@example.com` into "E2e Intake 1786..."). It never cleaned up, so **every full
+  regression run this session left a new permanent user behind** — 60 had accumulated. Now deletes the
+  ticket + disables the auto-provisioned user at the end of each test.
+- More importantly, **disabled users were never filtered out of any assignee/watcher/team-member/
+  project-member picker** — `GET /users` intentionally still returns them (the Users admin page needs to,
+  to re-enable one), but every picker that reused that same response was showing disabled people as
+  selectable, not just the email-intake debris. Fixed at the fetch site in `CreateTicketModal.tsx`,
+  `TicketDetail.tsx`, `ProjectDetail.tsx`, and `TeamsAdmin.tsx` — filter `status !== 'disabled'` once, right
+  where each page calls `usersApi.list()`, rather than four different render-time checks.
+- One-time cleanup: hard-deleted the 60 already-accumulated debris users and their orphaned tickets/
+  activity-log/audit-log rows (they predate the fix above, so soft-deleting wouldn't have removed the
+  clutter — the picker had no disabled-filter yet at the time they were created).
+
+### Changed
+- New ticket / New sub-task's Watchers section no longer renders the full candidate list open by default —
+  it shows only the currently-selected watchers (if any) plus an "Add watchers" button that expands the
+  full picker on click. Same underlying multi-select, just collapsed until asked for.
+
 ## 2026-08-14 — Cross-team ticket visibility ("Collaborating teams")
 
 A ticket a call-center agent raises on, say, a redemption issue can need both Tech and Ops to resolve it,
