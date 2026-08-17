@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, Plus, Trash2, Users as UsersIcon, X } from 'lucide-react';
 import { teamsApi, TeamRow } from '../api/teams';
 import { usersApi, UserRow } from '../api/users';
+import { rolesApi } from '../api/roles';
 import { ApiError } from '../api/client';
 import { exportToCsv } from '../components/ui/exportCsv';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -15,6 +16,7 @@ import { useAuth } from '../auth/AuthContext';
 export function TeamsAdmin() {
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [roles, setRoles] = useState<{ id: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TeamRow | 'new' | null>(null);
 
@@ -22,8 +24,8 @@ export function TeamsAdmin() {
     setLoading(true);
     // Excludes disabled users from the lead/member pickers below — see the
     // same fix in CreateTicketModal.tsx.
-    Promise.all([teamsApi.list(), usersApi.list()])
-      .then(([t, u]) => { setTeams(t); setUsers(u.filter((candidate) => candidate.status !== 'disabled')); })
+    Promise.all([teamsApi.list(), usersApi.list(), rolesApi.list()])
+      .then(([t, u, r]) => { setTeams(t); setUsers(u.filter((candidate) => candidate.status !== 'disabled')); setRoles(r); })
       .finally(() => setLoading(false));
   }
   useEffect(load, []);
@@ -66,6 +68,7 @@ export function TeamsAdmin() {
         <TeamModal
           team={editing === 'new' ? null : editing}
           users={users}
+          roles={roles}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }}
         />
@@ -74,13 +77,15 @@ export function TeamsAdmin() {
   );
 }
 
-function TeamModal({ team, users, onClose, onSaved }: {
-  team: TeamRow | null; users: UserRow[]; onClose: () => void; onSaved: () => void;
+function TeamModal({ team, users, roles, onClose, onSaved }: {
+  team: TeamRow | null; users: UserRow[]; roles: { id: string; label: string }[]; onClose: () => void; onSaved: () => void;
 }) {
   const { permissions } = useAuth();
   const [name, setName] = useState(team?.name ?? '');
   const [leadUserId, setLeadUserId] = useState(team?.leadUserId ?? '');
   const [memberUserIds, setMemberUserIds] = useState<string[]>(team?.memberships.map((m) => m.userId) ?? []);
+  const [hoursViewerUserIds, setHoursViewerUserIds] = useState<string[]>(team?.hoursViewerUserIds ?? []);
+  const [hoursViewerRoleIds, setHoursViewerRoleIds] = useState<string[]>(team?.hoursViewerRoleIds ?? []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -88,6 +93,12 @@ function TeamModal({ team, users, onClose, onSaved }: {
 
   function toggleMember(userId: string) {
     setMemberUserIds((ids) => (ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId]));
+  }
+  function toggleHoursViewerUser(userId: string) {
+    setHoursViewerUserIds((ids) => (ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId]));
+  }
+  function toggleHoursViewerRole(roleId: string) {
+    setHoursViewerRoleIds((ids) => (ids.includes(roleId) ? ids.filter((id) => id !== roleId) : [...ids, roleId]));
   }
 
   async function submit() {
@@ -98,7 +109,7 @@ function TeamModal({ team, users, onClose, onSaved }: {
     setBusy(true);
     setError('');
     try {
-      const body = { name, leadUserId: leadUserId || undefined, memberUserIds };
+      const body = { name, leadUserId: leadUserId || undefined, memberUserIds, hoursViewerUserIds, hoursViewerRoleIds };
       if (team) await teamsApi.update(team.id, body);
       else await teamsApi.create(body);
       onSaved();
@@ -153,6 +164,40 @@ function TeamModal({ team, users, onClose, onSaved }: {
                   className={`watcher-chip ${memberUserIds.includes(u.id) ? 'active' : ''}`}
                   onClick={() => toggleMember(u.id)}
                   aria-pressed={memberUserIds.includes(u.id)}
+                >
+                  {u.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field full">
+            <label id="team-hours-viewers-label">Who else can view this team's hours</label>
+            <div className="field-note" style={{ marginBottom: 6 }}>
+              This team's Lead can always see its hours. Grant extra access here — specific people and/or
+              whole roles — without changing what that person/role can see anywhere else.
+            </div>
+            <div role="group" aria-labelledby="team-hours-viewers-label" style={{ marginBottom: 8 }}>
+              {roles.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={`watcher-chip ${hoursViewerRoleIds.includes(r.id) ? 'active' : ''}`}
+                  onClick={() => toggleHoursViewerRole(r.id)}
+                  aria-pressed={hoursViewerRoleIds.includes(r.id)}
+                  title={`Everyone with the ${r.label} role`}
+                >
+                  {r.label} (role)
+                </button>
+              ))}
+            </div>
+            <div role="group" aria-labelledby="team-hours-viewers-label">
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className={`watcher-chip ${hoursViewerUserIds.includes(u.id) ? 'active' : ''}`}
+                  onClick={() => toggleHoursViewerUser(u.id)}
+                  aria-pressed={hoursViewerUserIds.includes(u.id)}
                 >
                   {u.name}
                 </button>

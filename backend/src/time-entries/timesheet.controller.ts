@@ -17,7 +17,7 @@ export class TimesheetController {
   constructor(private readonly timeEntriesService: TimeEntriesService) {}
 
   @Get('team-summary')
-  teamSummary(
+  async teamSummary(
     @CurrentUser() user: AuthenticatedUser,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -25,7 +25,8 @@ export class TimesheetController {
     @Query('userId') userId?: string,
   ) {
     const perms = effectivePermissions(user);
-    if (perms.workHoursVisibility !== 'org' && perms.workHoursVisibility !== 'team') {
+    const effectiveVisibility = await this.timeEntriesService.effectiveWorkHoursVisibility(user, perms);
+    if (effectiveVisibility !== 'org' && effectiveVisibility !== 'team') {
       throw new ForbiddenException('Your role cannot view team timesheet summaries');
     }
     const teamIds = team?.split(',').filter(Boolean);

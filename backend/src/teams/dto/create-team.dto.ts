@@ -11,4 +11,14 @@ export class CreateTeamDto {
   @IsOptional()
   @IsArray()
   memberUserIds?: string[];
+
+  // Admin-configurable "team hours" access beyond this team's own Lead —
+  // specific people and/or whole roles. See common/permissions/team-access.ts.
+  @IsOptional()
+  @IsArray()
+  hoursViewerUserIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  hoursViewerRoleIds?: string[];
 }

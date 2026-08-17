@@ -13,9 +13,14 @@ export class TimeEntriesController {
   constructor(private readonly timeEntriesService: TimeEntriesService) {}
 
   @Get()
-  workHours(@CurrentUser() user: AuthenticatedUser, @Query() query: WorkHoursQueryDto) {
+  async workHours(@CurrentUser() user: AuthenticatedUser, @Query() query: WorkHoursQueryDto) {
     const perms = effectivePermissions(user);
-    if (perms.workHoursVisibility === 'none') {
+    // Own default plus any Team.hoursViewerUserIds/hoursViewerRoleIds grant
+    // (common/permissions/team-access.ts) — a role that otherwise sees none
+    // or only its own hours can be granted team-level access to a specific
+    // team without its role changing anywhere else.
+    const effectiveVisibility = await this.timeEntriesService.effectiveWorkHoursVisibility(user, perms);
+    if (effectiveVisibility === 'none') {
       throw new ForbiddenException('Your role cannot view work-hours reports');
     }
     const teamIds = query.team?.split(',').filter(Boolean);
@@ -23,7 +28,7 @@ export class TimeEntriesController {
     // filter — 'own'-visibility roles (Developer/QA/PM) are pinned to today,
     // regardless of what the client sends, same as the existing 'own' gate
     // on scopedUserIds inside the service.
-    const canUseRangeAndMember = perms.workHoursVisibility === 'org' || perms.workHoursVisibility === 'team';
+    const canUseRangeAndMember = effectiveVisibility === 'org' || effectiveVisibility === 'team';
     const startDate = canUseRangeAndMember ? query.startDate ?? query.date : undefined;
     const endDate = canUseRangeAndMember ? query.endDate ?? query.date : undefined;
     const memberUserId = canUseRangeAndMember ? query.userId : undefined;
@@ -31,13 +36,14 @@ export class TimeEntriesController {
   }
 
   @Get('daily')
-  daily(@CurrentUser() user: AuthenticatedUser, @Query() query: WorkHoursQueryDto) {
+  async daily(@CurrentUser() user: AuthenticatedUser, @Query() query: WorkHoursQueryDto) {
     const perms = effectivePermissions(user);
-    if (perms.workHoursVisibility === 'none') {
+    const effectiveVisibility = await this.timeEntriesService.effectiveWorkHoursVisibility(user, perms);
+    if (effectiveVisibility === 'none') {
       throw new ForbiddenException('Your role cannot view work-hours reports');
     }
     const teamIds = query.team?.split(',').filter(Boolean);
-    const canUseRangeAndMember = perms.workHoursVisibility === 'org' || perms.workHoursVisibility === 'team';
+    const canUseRangeAndMember = effectiveVisibility === 'org' || effectiveVisibility === 'team';
     const startDate = canUseRangeAndMember ? query.startDate ?? query.date : undefined;
     const endDate = canUseRangeAndMember ? query.endDate ?? query.date : undefined;
     const memberUserId = canUseRangeAndMember ? query.userId : undefined;
@@ -45,7 +51,7 @@ export class TimeEntriesController {
   }
 
   @Get(':userId/tickets')
-  drillDown(
+  async drillDown(
     @Param('userId') userId: string,
     @Query('date') date: string,
     @Query('startDate') startDate: string | undefined,
@@ -53,11 +59,12 @@ export class TimeEntriesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const perms = effectivePermissions(user);
-    if (perms.workHoursVisibility === 'none') {
-      throw new ForbiddenException('Your role cannot view work-hours reports');
-    }
-    if (perms.workHoursVisibility === 'own' && userId !== user.id) {
-      throw new ForbiddenException('You can only drill into your own hours');
+    // Reuses canViewUser (also grant-aware) rather than a separate
+    // 'own'-only check — that previously let any org/team-visibility role
+    // drill into literally anyone by id, not just people in their actual
+    // scope.
+    if (!(await this.timeEntriesService.canViewUser(user, perms, userId))) {
+      throw new ForbiddenException('You cannot view this person\'s hours');
     }
     return this.timeEntriesService.drillDown(userId, startDate ?? date, endDate);
   }

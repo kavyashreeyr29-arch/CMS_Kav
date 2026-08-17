@@ -3,7 +3,8 @@ import { Prisma, TimeEntrySource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
-import { RolePermissions } from '../common/permissions/role-permissions';
+import { RolePermissions, WorkHoursVisibility } from '../common/permissions/role-permissions';
+import { getGrantedTeamIds } from '../common/permissions/team-access';
 import { CreateManualTimeEntryDto } from './dto/create-manual-time-entry.dto';
 
 interface WorkHoursRow {
@@ -37,10 +38,27 @@ export class TimeEntriesService {
     private readonly activityLog: ActivityLogService,
   ) {}
 
+  /**
+   * A role's workHoursVisibility is a static default (role-permissions.ts);
+   * Team.hoursViewerUserIds/hoursViewerRoleIds let an admin grant a
+   * specific person or role team-level access to one team's hours on top
+   * of that default — e.g. an Operations person (default 'none') added to
+   * one team's hoursViewerUserIds can see that team's hours without their
+   * role changing anywhere else. 'org' already sees everything, so grants
+   * can't add anything there — skip the lookup.
+   */
+  async effectiveWorkHoursVisibility(user: AuthenticatedUser, perms: RolePermissions): Promise<WorkHoursVisibility> {
+    if (perms.workHoursVisibility === 'org') return 'org';
+    const grantedTeamIds = await getGrantedTeamIds(this.prisma, user);
+    return grantedTeamIds.length > 0 ? 'team' : perms.workHoursVisibility;
+  }
+
   // workHoursVisibility gates *who* the rollup can include: an org-wide
-  // viewer sees everyone, a team-scoped Lead sees only their team(s), and an
-  // 'own' viewer only ever sees themselves regardless of query params.
-  // Shared by workHours() and dailyBreakdown() so the two can never drift.
+  // viewer sees everyone, a team-scoped viewer (the role default, or anyone
+  // granted access to a specific team — see getGrantedTeamIds) sees only
+  // their team(s), and an 'own' viewer only ever sees themselves regardless
+  // of query params. Shared by workHours()/dailyBreakdown()/teamSummary()
+  // so the three can never drift.
   private async resolveScopedUserIds(
     user: AuthenticatedUser,
     perms: RolePermissions,
@@ -48,25 +66,44 @@ export class TimeEntriesService {
     memberUserId?: string,
   ): Promise<string[] | undefined> {
     let scopedUserIds: string[] | undefined;
-    if (perms.workHoursVisibility === 'own') {
-      scopedUserIds = [user.id];
-    } else if (perms.workHoursVisibility === 'team') {
-      const memberships = await this.prisma.teamMembership.findMany({
-        where: { teamId: { in: user.ledTeamIds } },
-        select: { userId: true },
-      });
-      scopedUserIds = memberships.map((m) => m.userId);
-    } else if (teamIds?.length) {
+    if (perms.workHoursVisibility === 'org') {
+      scopedUserIds = undefined;
+    } else {
+      const grantedTeamIds = await getGrantedTeamIds(this.prisma, user);
+      if (grantedTeamIds.length > 0) {
+        const memberships = await this.prisma.teamMembership.findMany({
+          where: { teamId: { in: grantedTeamIds } },
+          select: { userId: true },
+        });
+        scopedUserIds = [...new Set(memberships.map((m) => m.userId))];
+        // A grant widens visibility to those teams on top of always still
+        // seeing your own hours, for a role whose own default is 'own'.
+        if (perms.workHoursVisibility === 'own' && !scopedUserIds.includes(user.id)) {
+          scopedUserIds.push(user.id);
+        }
+      } else if (perms.workHoursVisibility === 'own') {
+        scopedUserIds = [user.id];
+      } else {
+        // 'team' default with nothing led/granted, or 'none' with no
+        // grants — resolved to "nobody"; the controller rejects the
+        // 'none'-with-no-grants case up front via effectiveWorkHoursVisibility.
+        scopedUserIds = [];
+      }
+    }
+
+    // Further narrow to an explicitly requested team/member — intersected
+    // with whatever scope already applies (rather than trusted outright),
+    // so nobody can widen their own access by just passing a param; an
+    // unrestricted ('org') viewer is the only case with nothing to
+    // intersect against yet.
+    if (teamIds?.length) {
       const memberships = await this.prisma.teamMembership.findMany({
         where: { teamId: { in: teamIds } },
         select: { userId: true },
       });
-      scopedUserIds = memberships.map((m) => m.userId);
+      const requestedIds = memberships.map((m) => m.userId);
+      scopedUserIds = scopedUserIds ? scopedUserIds.filter((id) => requestedIds.includes(id)) : requestedIds;
     }
-
-    // docs/prd-phase2.md §8 — "or for specific member only" — intersect with
-    // whatever scope already applies rather than trusting the param outright,
-    // so a team-scoped Lead can't query an out-of-team member's hours by id.
     if (memberUserId) {
       scopedUserIds = scopedUserIds ? scopedUserIds.filter((id) => id === memberUserId) : [memberUserId];
     }
@@ -177,11 +214,12 @@ export class TimeEntriesService {
   // also be pointed at someone else's entries for the team-overview drill-
   // down below, gated by canViewUser() (enforced in the controller).
 
-  /** Can `user` see `targetUserId`'s timesheet — always true for yourself, otherwise the same org/team visibility Team Hours already uses. */
+  /** Can `user` see `targetUserId`'s timesheet — always true for yourself, otherwise the same org/team visibility Team Hours already uses (including any per-team grant). */
   async canViewUser(user: AuthenticatedUser, perms: RolePermissions, targetUserId: string): Promise<boolean> {
     if (targetUserId === user.id) return true;
-    if (perms.workHoursVisibility === 'org') return true;
-    if (perms.workHoursVisibility === 'team') {
+    const effective = await this.effectiveWorkHoursVisibility(user, perms);
+    if (effective === 'org') return true;
+    if (effective === 'team') {
       const scopedUserIds = await this.resolveScopedUserIds(user, perms);
       return !!scopedUserIds?.includes(targetUserId);
     }

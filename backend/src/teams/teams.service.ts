@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { SAFE_USER_SELECT } from '../common/prisma/safe-user-select';
 import { AuditLogService, diffFields } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/permissions/effective-permissions';
+import { roleExists } from '../common/permissions/role-permissions';
 
 const TEAM_INCLUDE = {
   lead: { select: SAFE_USER_SELECT },
@@ -34,11 +35,21 @@ export class TeamsService {
     return team;
   }
 
+  private assertValidRoleIds(roleIds?: string[]) {
+    const unknown = roleIds?.filter((id) => !roleExists(id));
+    if (unknown?.length) {
+      throw new BadRequestException(`Unknown role id(s): ${unknown.join(', ')}`);
+    }
+  }
+
   async create(dto: CreateTeamDto, actor: AuthenticatedUser) {
+    this.assertValidRoleIds(dto.hoursViewerRoleIds);
     const team = await this.prisma.team.create({
       data: {
         name: dto.name,
         leadUserId: dto.leadUserId,
+        hoursViewerUserIds: dto.hoursViewerUserIds ?? [],
+        hoursViewerRoleIds: dto.hoursViewerRoleIds ?? [],
         memberships: dto.memberUserIds
           ? { create: dto.memberUserIds.map((userId) => ({ userId })) }
           : undefined,
@@ -56,6 +67,7 @@ export class TeamsService {
 
   async update(id: string, dto: UpdateTeamDto, actor: AuthenticatedUser) {
     const existing = await this.findOne(id);
+    this.assertValidRoleIds(dto.hoursViewerRoleIds);
 
     if (dto.memberUserIds) {
       await this.prisma.teamMembership.deleteMany({ where: { teamId: id } });
@@ -66,6 +78,8 @@ export class TeamsService {
       data: {
         ...(dto.name && { name: dto.name }),
         ...(dto.leadUserId !== undefined && { leadUserId: dto.leadUserId }),
+        ...(dto.hoursViewerUserIds !== undefined && { hoursViewerUserIds: dto.hoursViewerUserIds }),
+        ...(dto.hoursViewerRoleIds !== undefined && { hoursViewerRoleIds: dto.hoursViewerRoleIds }),
         ...(dto.memberUserIds && {
           memberships: { create: dto.memberUserIds.map((userId) => ({ userId })) },
         }),
@@ -74,8 +88,16 @@ export class TeamsService {
     });
 
     const changes = diffFields(
-      { name: existing.name, leadUserId: existing.leadUserId, memberCount: existing.memberships.length },
-      { name: team.name, leadUserId: team.leadUserId, memberCount: team.memberships.length },
+      {
+        name: existing.name, leadUserId: existing.leadUserId, memberCount: existing.memberships.length,
+        hoursViewerUserIds: [...existing.hoursViewerUserIds].sort().join(', '),
+        hoursViewerRoleIds: [...existing.hoursViewerRoleIds].sort().join(', '),
+      },
+      {
+        name: team.name, leadUserId: team.leadUserId, memberCount: team.memberships.length,
+        hoursViewerUserIds: [...team.hoursViewerUserIds].sort().join(', '),
+        hoursViewerRoleIds: [...team.hoursViewerRoleIds].sort().join(', '),
+      },
     );
     if (changes) {
       await this.auditLog.record({

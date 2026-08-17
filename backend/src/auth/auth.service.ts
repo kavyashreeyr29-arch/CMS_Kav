@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { effectivePermissions } from '../common/permissions/effective-permissions';
+import { getGrantedTeamIds } from '../common/permissions/team-access';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +28,7 @@ export class AuthService {
     }
 
     const accessToken = this.jwt.sign({ sub: user.id });
-    return { accessToken, ...this.buildProfile(user) };
+    return { accessToken, ...(await this.buildProfile(user)) };
   }
 
   /** Backs GET /auth/me — session rehydration on page load uses the same shape as login. */
@@ -40,7 +41,7 @@ export class AuthService {
     return this.buildProfile(user);
   }
 
-  private buildProfile(user: {
+  private async buildProfile(user: {
     id: string; orgId: string; baseRoleId: string; seniority: string | null; name: string; email: string;
     avatarInitials: string | null; ledTeams: { id: string }[]; baseRole: { id: string; label: string; group: string };
   }) {
@@ -52,6 +53,17 @@ export class AuthService {
       ledTeamIds: user.ledTeams.map((t) => t.id),
     };
 
+    // effectivePermissions() stays a synchronous, pure role+seniority
+    // function (it's called from PermissionsGuard on every request and
+    // must stay sync) — a per-team hours grant (team-access.ts) is instead
+    // folded in here, only for the profile the frontend reads, by cloning
+    // the (possibly role-shared, cached) object before touching it.
+    const permissions = { ...effectivePermissions(authUser) };
+    if (permissions.workHoursVisibility !== 'org') {
+      const grantedTeamIds = await getGrantedTeamIds(this.prisma, authUser);
+      if (grantedTeamIds.length > 0) permissions.workHoursVisibility = 'team';
+    }
+
     return {
       user: {
         id: user.id,
@@ -61,7 +73,7 @@ export class AuthService {
         role: { id: user.baseRole.id, label: user.baseRole.label, group: user.baseRole.group },
         seniority: user.seniority,
       },
-      permissions: effectivePermissions(authUser),
+      permissions,
     };
   }
 }

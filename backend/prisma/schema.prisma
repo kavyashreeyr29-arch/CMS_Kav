@@ -238,6 +238,13 @@ model Team {
   id         String  @id @default(uuid())
   name       String
   leadUserId String? @map("lead_user_id")
+  // Admin-configurable extra "team hours" access, on top of the team's own
+  // Lead (who always sees it) — see common/permissions/team-access.ts.
+  // Independent of the viewer's own role's workHoursVisibility default, so
+  // an admin can widen access for a specific person/role to one team's
+  // hours without changing what that role can see anywhere else.
+  hoursViewerUserIds String[] @default([]) @map("hours_viewer_user_ids")
+  hoursViewerRoleIds String[] @default([]) @map("hours_viewer_role_ids")
 
   lead        User?            @relation("TeamLead", fields: [leadUserId], references: [id])
   memberships TeamMembership[]

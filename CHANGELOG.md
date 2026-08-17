@@ -3,6 +3,46 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-17 — Admin-configurable per-team "Team hours" access
+
+Team hours was previously visible only to Admin/Director/PM (org-wide) and a team's own Lead — fixed by
+role, nothing an admin could configure. Now an admin can additionally grant a specific person and/or a
+whole role access to one team's hours, on top of that existing default (nobody who could already see it
+loses access).
+
+### Added
+- `Team.hoursViewerUserIds` / `Team.hoursViewerRoleIds` (`String[]`) — admin-set, per team, in the same
+  `TeamModal` used to manage the team's Lead and Members (`TeamsAdmin.tsx`, new "Who else can view this
+  team's hours" section — role chips and person chips, independent of each other).
+- `backend/src/common/permissions/team-access.ts`'s `getGrantedTeamIds()` — the teams a user has explicit
+  hours access to: being the team's Lead, individually granted, or granted by role. Plain function (not a
+  service) so both `AuthService` and `TimeEntriesService` can call it without a cross-module dependency,
+  same reasoning as `ticketVisibilityWhere` living as a standalone function.
+- `TimeEntriesService.effectiveWorkHoursVisibility()` — a role's `workHoursVisibility` (none/own/team/org)
+  upgraded to `'team'` if the user has any grant, independent of what their role would otherwise allow (an
+  Operations person, normally `'none'`, can be granted access to one team without their role changing
+  anywhere else). All three Team Hours/Team Timesheet endpoints (`workHours`, `daily`, `team-summary`) and
+  the drill-down now go through this instead of the raw role default.
+- `AuthService.buildProfile()` folds the same grant check into the `permissions.workHoursVisibility` the
+  frontend receives from `/auth/me` — the existing `RolePermissions`-typed UI gates (Team hours nav item,
+  the date-range picker, the My Timesheet Team tab) all pick this up with no frontend changes beyond the
+  new `TeamModal` section, since `permissions` was already a per-user (seniority-adjusted) object, not a
+  purely static per-role one. `effectivePermissions()` itself stays synchronous and unchanged — it's called
+  from `PermissionsGuard` on every request and can't become async — the grant is folded in only where the
+  profile is built, by cloning the (possibly role-shared, cached) permissions object first.
+
+### Fixed — a real gap found while touching this code
+`GET /reports/work-hours/:userId/tickets` (the "view history" drill-down) only checked `userId !== self` for
+`'own'`-visibility roles; an `'org'`/`'team'`-visibility viewer could drill into literally any user id, not
+just people in their actual scope. Now reuses `canViewUser()` (already used by My Timesheet's own
+drill-down) instead of a separate, looser check.
+
+### Verified live
+Granted an Operations account (`workHoursVisibility: 'none'` by default) individual access to one team —
+`403` before, `200` scoped to just that team's members after, `403` again once revoked. Granted the `qa`
+role access to a different team and confirmed a QA user gained access without being individually listed,
+while an unrelated grant on another team stayed correctly un-leaked between the two.
+
 ## 2026-08-14 — Collapse the Watchers picker; fix a real user-list leak it exposed
 
 A screenshot of the New sub-task modal showed the Watchers picker as a wall of ~80 chips — most of them
