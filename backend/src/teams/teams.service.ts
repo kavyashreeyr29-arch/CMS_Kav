@@ -42,6 +42,24 @@ export class TeamsService {
     }
   }
 
+  /**
+   * Renders a team-hours grant list as names/labels rather than raw ids —
+   * an audit log entry reading "hoursViewerUserIds: f3d835b8-... →" tells
+   * an admin nothing about who was actually granted access. Looks up both
+   * old and new ids in one query each so a before/after diff only needs
+   * two round-trips regardless of how much the list changed.
+   */
+  private async describeGrants(beforeIds: string[], afterIds: string[], roles: boolean) {
+    const allIds = [...new Set([...beforeIds, ...afterIds])];
+    if (allIds.length === 0) return { before: '', after: '' };
+    const rows = roles
+      ? await this.prisma.role.findMany({ where: { id: { in: allIds } }, select: { id: true, label: true } })
+      : await this.prisma.user.findMany({ where: { id: { in: allIds } }, select: { id: true, name: true } });
+    const nameById = new Map(rows.map((r) => [r.id, roles ? (r as { label: string }).label : (r as { name: string }).name]));
+    const describe = (ids: string[]) => [...ids].sort().map((id) => nameById.get(id) ?? id).join(', ');
+    return { before: describe(beforeIds), after: describe(afterIds) };
+  }
+
   async create(dto: CreateTeamDto, actor: AuthenticatedUser) {
     this.assertValidRoleIds(dto.hoursViewerRoleIds);
     const team = await this.prisma.team.create({
@@ -57,10 +75,19 @@ export class TeamsService {
       include: { lead: { select: SAFE_USER_SELECT }, memberships: true },
     });
 
+    const changes: Record<string, { before: unknown; after: unknown }> = {
+      memberCount: { before: null, after: team.memberships.length },
+    };
+    if (team.hoursViewerUserIds.length) {
+      changes['Extra hours viewers'] = { before: '', after: (await this.describeGrants([], team.hoursViewerUserIds, false)).after };
+    }
+    if (team.hoursViewerRoleIds.length) {
+      changes['Extra hours viewer roles'] = { before: '', after: (await this.describeGrants([], team.hoursViewerRoleIds, true)).after };
+    }
     await this.auditLog.record({
       orgId: actor.orgId, actorUserId: actor.id, action: 'team.created',
       targetType: 'Team', targetId: team.id, targetLabel: team.name,
-      changes: { memberCount: { before: null, after: team.memberships.length } },
+      changes,
     });
     return team;
   }
@@ -88,18 +115,16 @@ export class TeamsService {
     });
 
     const changes = diffFields(
-      {
-        name: existing.name, leadUserId: existing.leadUserId, memberCount: existing.memberships.length,
-        hoursViewerUserIds: [...existing.hoursViewerUserIds].sort().join(', '),
-        hoursViewerRoleIds: [...existing.hoursViewerRoleIds].sort().join(', '),
-      },
-      {
-        name: team.name, leadUserId: team.leadUserId, memberCount: team.memberships.length,
-        hoursViewerUserIds: [...team.hoursViewerUserIds].sort().join(', '),
-        hoursViewerRoleIds: [...team.hoursViewerRoleIds].sort().join(', '),
-      },
-    );
-    if (changes) {
+      { name: existing.name, leadUserId: existing.leadUserId, memberCount: existing.memberships.length },
+      { name: team.name, leadUserId: team.leadUserId, memberCount: team.memberships.length },
+    ) ?? {};
+
+    const viewerNames = await this.describeGrants(existing.hoursViewerUserIds, team.hoursViewerUserIds, false);
+    if (viewerNames.before !== viewerNames.after) changes['Extra hours viewers'] = viewerNames;
+    const viewerRoles = await this.describeGrants(existing.hoursViewerRoleIds, team.hoursViewerRoleIds, true);
+    if (viewerRoles.before !== viewerRoles.after) changes['Extra hours viewer roles'] = viewerRoles;
+
+    if (Object.keys(changes).length > 0) {
       await this.auditLog.record({
         orgId: actor.orgId, actorUserId: actor.id, action: 'team.updated',
         targetType: 'Team', targetId: team.id, targetLabel: team.name,

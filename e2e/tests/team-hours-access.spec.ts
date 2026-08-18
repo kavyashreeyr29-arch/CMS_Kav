@@ -42,6 +42,12 @@ test.describe('Team hours access grants — API', () => {
     });
     expect(grant.ok()).toBeTruthy();
 
+    // Audit-logged by name, not a bare user id — an admin reviewing the
+    // trail later needs "who was granted access", not a UUID to look up.
+    const auditLog = await (await request.get(`${API_BASE}/audit-log?limit=5`, { headers: auth(adminT) })).json();
+    const grantEntry = auditLog.data.find((e: { targetId: string; changes: Record<string, unknown> }) => e.targetId === team.id && e.changes?.['Extra hours viewers']);
+    expect(grantEntry?.changes['Extra hours viewers']).toEqual({ before: '', after: grantee.name });
+
     const meAfter = await (await request.get(`${API_BASE}/auth/me`, { headers: auth(granteeT) })).json();
     expect(meAfter.permissions.workHoursVisibility).toBe('team');
 
@@ -77,6 +83,12 @@ test.describe('Team hours access grants — API', () => {
     expect(me.permissions.workHoursVisibility).toBe('team');
     const res = await request.get(`${API_BASE}/reports/work-hours?date=2026-08-17`, { headers: auth(t) });
     expect(res.ok()).toBeTruthy();
+
+    // Set at creation time (not via a later PATCH) — audit-logged as the
+    // role's label ("Call Center Agent"), not the bare role id.
+    const auditLog = await (await request.get(`${API_BASE}/audit-log?limit=5`, { headers: auth(adminT) })).json();
+    const createEntry = auditLog.data.find((e: { targetId: string; action: string }) => e.targetId === team.id && e.action === 'team.created');
+    expect(createEntry?.changes['Extra hours viewer roles']).toEqual({ before: '', after: 'Call Center Agent' });
 
     await request.delete(`${API_BASE}/teams/${team.id}`, { headers: auth(adminT) });
     await request.delete(`${API_BASE}/users/${roleHolder.id}`, { headers: auth(adminT) });

@@ -3,6 +3,27 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-18 — Team-hours grants now audit-log by name, not raw id
+
+`teams.service.ts` was already writing `hoursViewerUserIds`/`hoursViewerRoleIds` changes to the audit log
+(bundled into the existing `team.updated`/`team.created` entries) — but as raw UUIDs and role ids, e.g.
+`hoursViewerUserIds: f3d835b8-8fe0-... →`. Technically logged, not actually answerable — an admin
+reviewing "who granted access to whom" would have had to go look the id up.
+
+### Fixed
+- New `TeamsService.describeGrants()` resolves both the before and after id lists to real names
+  (`prisma.user`) or role labels (`prisma.role`) before writing the diff, and uses readable field names
+  ("Extra hours viewers" / "Extra hours viewer roles") instead of the raw camelCase property names —
+  matches the existing "Collaborating teams" ticket-field-change precedent (`tickets.service.ts`).
+- `create()` now logs the grant too when it's set right at team creation, not just on a later edit — it
+  previously only recorded `memberCount`.
+
+### Verified live
+`PATCH` a team with `hoursViewerUserIds`/`hoursViewerRoleIds` set → audit log entry reads
+`"Extra hours viewers": { before: "", after: "F. Haddad" }` and
+`"Extra hours viewer roles": { before: "", after: "Customer Success" }`; revoking both afterward shows the
+same fields flipped (name/label → empty), not just a blank diff.
+
 ## 2026-08-17 — Admin-configurable per-team "Team hours" access
 
 Team hours was previously visible only to Admin/Director/PM (org-wide) and a team's own Lead — fixed by
