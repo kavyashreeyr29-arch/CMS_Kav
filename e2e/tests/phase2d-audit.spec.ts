@@ -26,6 +26,25 @@ test.describe('Phase 2d — Team Hours & CSV export', () => {
     await page.locator('.modal-close').click();
   });
 
+  test('view-history drawer renders a manual entry with no linked ticket instead of crashing', async ({ page }) => {
+    // WorkHoursEntry.ticket is nullable (a manual entry logged with no
+    // ticket, e.g. "daily standup") — the drawer used to assume it was
+    // always present and threw "Cannot read properties of null (reading
+    // 'displayId')" with no error boundary anywhere in the app, blanking
+    // the whole page, not just the drawer. A wide range guarantees at
+    // least one such entry shows up for J. Ortiz (seed.ts's manual entries).
+    await page.goto('/work-hours');
+    await page.locator('.panel-head input[type="date"]').first().fill('2026-07-01');
+    const row = page.locator('.wl-row', { hasText: 'Ortiz' });
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.locator('.modal-title', { hasText: 'time logged' })).toBeVisible();
+    await expect(page.locator('.modal .data-table')).toContainText('No ticket — manual entry');
+    // The app didn't crash — the rest of the row (date, hours) still renders.
+    await expect(page.locator('.modal .data-table tbody tr').first()).toBeVisible();
+    await page.locator('.modal-close').click();
+  });
+
   test('Team hours CSV export triggers a real file download', async ({ page }) => {
     await page.goto('/work-hours');
     await expect(page.locator('.wl-row').first()).toBeVisible();

@@ -44,7 +44,7 @@ function HistoryDrawer({ userId, name, startDate, endDate, onClose }: {
     exportToCsv(
       `${name.replace(/\s+/g, '-')}-hours-${startDate}-to-${endDate}`,
       ['Date', 'Ticket', 'Title', 'Hours'],
-      entries.map((e) => [e.startedAt.slice(0, 10), e.ticket.displayId, e.ticket.title, formatDuration(e.durationMinutes)]),
+      entries.map((e) => [e.startedAt.slice(0, 10), e.ticket?.displayId ?? '', e.ticket?.title ?? '(no ticket — manual entry)', formatDuration(e.durationMinutes)]),
     );
   }
 
@@ -69,8 +69,14 @@ function HistoryDrawer({ userId, name, startDate, endDate, onClose }: {
                   {entries.map((e) => (
                     <tr key={e.id}>
                       <td className="mono">{new Date(e.startedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</td>
-                      <td className="tid">{e.ticket.displayId}</td>
-                      <td>{e.ticket.title}</td>
+                      {e.ticket ? (
+                        <>
+                          <td className="tid">{e.ticket.displayId}</td>
+                          <td>{e.ticket.title}</td>
+                        </>
+                      ) : (
+                        <td colSpan={2} style={{ color: 'var(--ink-faint)' }}>No ticket — manual entry</td>
+                      )}
                       <td className="mono">{formatDuration(e.durationMinutes)}</td>
                     </tr>
                   ))}

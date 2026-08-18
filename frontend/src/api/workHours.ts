@@ -12,7 +12,9 @@ export interface WorkHoursEntry {
   startedAt: string;
   endedAt: string | null;
   durationMinutes: string | number | null;
-  ticket: { id: string; displayId: string; title: string };
+  // A manual entry logged with no specific ticket (e.g. "daily standup")
+  // has no ticket relation at all — null, not omitted.
+  ticket: { id: string; displayId: string; title: string } | null;
 }
 
 export interface DailyWorkHoursRow {

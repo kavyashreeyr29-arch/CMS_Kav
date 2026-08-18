@@ -3,6 +3,32 @@
 All notable changes to this project are logged here, newest first. Every new feature or non-trivial
 change gets an entry — see `CLAUDE.md` for the rule this file exists to satisfy.
 
+## 2026-08-18 — Fixed: Team Hours "view history" crashed on a manual entry with no ticket
+
+Reported as two symptoms — "no summary tiles... like before" and "clicking an individual user, the page is
+blank, crashing" — that turned out to be the same root cause. This app has no error boundary anywhere
+(confirmed via React's own console warning), so one uncaught render error blanks the *entire* app to a
+white screen, not just the component that threw — which is consistent with both symptoms coming from a
+single crash rather than two separate bugs.
+
+### Fixed
+- `WorkHours.tsx`'s "view history" drawer (`/work-hours`, click a person → per-ticket breakdown) assumed
+  every `TimeEntry` has a linked ticket and read `e.ticket.displayId` directly. A manual entry logged with
+  no ticket (e.g. "daily standup", "on-call handover" — real seed data) has `ticket: null`, throwing
+  `Cannot read properties of null (reading 'displayId')` the moment that row rendered.
+- `WorkHoursEntry.ticket` was typed as always-present (`{ id, displayId, title }`) when the backend
+  (`TimeEntriesService.drillDown()`) always could return `null` for it — the type was lying about the shape
+  of real data, which is exactly why TypeScript never caught this. Now typed `... | null`, and both the
+  table row and CSV export show "No ticket — manual entry" instead of crashing, matching the pattern
+  `Timesheet.tsx`'s own manual-entries table already used.
+- Reproduced directly (not assumed) via a Playwright session with real console/page-error capture, which
+  caught the exact stack trace before diagnosing the fix.
+
+### Added
+- `phase2d-audit.spec.ts`: a new test that widens the date range to guarantee a manual/ticketless entry
+  shows up, opens the drawer, and asserts it renders instead of crashing — the existing drawer test only
+  ever exercised whichever entry happened to be first for today's date, which is why this went unnoticed.
+
 ## 2026-08-18 — Team-hours grants now audit-log by name, not raw id
 
 `teams.service.ts` was already writing `hoursViewerUserIds`/`hoursViewerRoleIds` changes to the audit log
