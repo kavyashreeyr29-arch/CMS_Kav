@@ -18,7 +18,14 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  app.enableCors({ origin: corsOrigins, credentials: true });
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const allowed = corsOrigins.includes(origin) || origin.endsWith('.vercel.app');
+      callback(allowed ? null : new Error(`Origin not allowed: ${origin}`), allowed);
+    },
+    credentials: true,
+  });
 
   const port = config.get<number>('port')!;
   await app.listen(port, '0.0.0.0');
