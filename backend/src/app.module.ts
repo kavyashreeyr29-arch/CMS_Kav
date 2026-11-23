@@ -29,8 +29,10 @@ import { ProjectNotesModule } from './project-notes/project-notes.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { GithubModule } from './github/github.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     ScheduleModule.forRoot(),

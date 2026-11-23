@@ -89,8 +89,14 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-elevatohub}:${POSTGRES_PASSWORD:-elevatohub}@postgres:5432/${POSTGRES_DB:-elevatohub}?schema=public
+      # A Neon DATABASE_URL from the root .env takes precedence. Without one,
+      # retain the local Docker Postgres default.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-elevatohub}:${POSTGRES_PASSWORD:-elevatohub}@postgres:5432/${POSTGRES_DB:-elevatohub}?schema=public}
       REDIS_URL: redis://redis:6379
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}
+      AWS_REGION: ${AWS_REGION:-}
       # Deliberately the browser-reachable address, not the internal
       # `minio:9000` Docker DNS name — the backend never moves file bytes
       # itself, it only *signs* URLs that the browser then PUTs/GETs

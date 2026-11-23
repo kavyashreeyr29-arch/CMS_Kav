@@ -1,13 +1,22 @@
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
+const corsOrigins = [
+  process.env.FRONTEND_URL,
+  'https://frontend-kavyashree3.vercel.app',
+  process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
+].filter(Boolean).join(',')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 /**
  * LLD §4.4 / §6.2 — running-timer indicator. Clients join a per-project room
  * (`project:{code}:timers`) and receive `{ticketId, running}` pushes instead
  * of polling every ticket row. TicketsService.startTimer/stopTimer call
  * `broadcastTimerState` after each DB write.
  */
-@WebSocketGateway({ cors: { origin: '*' }, namespace: 'timers' })
+@WebSocketGateway({ cors: { origin: corsOrigins, credentials: true }, namespace: 'timers' })
 export class TimersGateway implements OnGatewayConnection {
   @WebSocketServer()
   server: Server;

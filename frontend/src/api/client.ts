@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  ?? (import.meta.env.DEV ? 'http://localhost:3000/api/v1' : '/api/v1');
 const TOKEN_STORAGE_KEY = 'elevatohub_token';
 
 export class ApiError extends Error {

@@ -5,7 +5,8 @@ import { formatStatus } from '../components/ui/Chips';
 import { WORKFLOW_STATUSES } from '../api/workflow';
 import { TicketStatus } from '../types/ticket';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)
+  ?? (import.meta.env.DEV ? 'http://localhost:3000/api/v1' : '/api/v1');
 
 function StatusSelect({ label, hint, value, onChange }: { label: string; hint: string; value: TicketStatus | null; onChange: (v: TicketStatus | null) => void }) {
   return (

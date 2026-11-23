@@ -10,7 +10,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -20,6 +20,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
+    "db:push": "prisma db push && prisma db execute --file prisma/sql/active_timer_constraint.sql",
     "prisma:apply-constraints": "prisma db execute --file prisma/sql/active_timer_constraint.sql",
     "seed": "ts-node prisma/seed.ts"
   },

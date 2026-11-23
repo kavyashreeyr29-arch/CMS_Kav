@@ -46,3 +46,4 @@ docker/redis-data/
 # Misc
 *.tsbuildinfo
 .turbo/
+.neon

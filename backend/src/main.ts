@@ -11,7 +11,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
-  app.setGlobalPrefix(config.get<string>('apiPrefix')!);
+  app.setGlobalPrefix(config.get<string>('apiPrefix')!, { exclude: ['health'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
   const corsOrigins = (config.get<string>('corsOrigin') ?? 'http://localhost:5173')
@@ -21,7 +21,7 @@ async function bootstrap() {
   app.enableCors({ origin: corsOrigins, credentials: true });
 
   const port = config.get<number>('port')!;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(`ElevatoHub API listening on http://localhost:${port}/${config.get('apiPrefix')}`);
 }

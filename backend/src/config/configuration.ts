@@ -2,7 +2,13 @@ export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  // Keep the stable Vercel production alias accepted alongside an explicitly
+  // configured FRONTEND_URL. Vercel deployment URLs are otherwise ephemeral.
+  corsOrigin: [
+    process.env.FRONTEND_URL,
+    'https://frontend-kavyashree3.vercel.app',
+    process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
+  ].filter(Boolean).join(','),
   databaseUrl: process.env.DATABASE_URL,
   redisUrl: process.env.REDIS_URL,
   jwt: {
@@ -27,11 +33,13 @@ export default () => ({
     defaultProjectCode: process.env.EMAIL_INTAKE_DEFAULT_PROJECT_CODE,
   },
   s3: {
-    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
-    accessKeyId: process.env.S3_ACCESS_KEY ?? 'elevatohub',
-    secretAccessKey: process.env.S3_SECRET_KEY ?? 'elevatohub123',
+    // Neon Object Storage uses standard AWS environment variable names. Keep
+    // the S3_* fallback so Docker/MinIO remains available for local-only use.
+    endpoint: process.env.AWS_ENDPOINT_URL_S3 ?? process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? process.env.S3_ACCESS_KEY ?? 'elevatohub',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? process.env.S3_SECRET_KEY ?? 'elevatohub123',
     bucket: process.env.S3_BUCKET ?? 'elevatohub-attachments',
-    region: process.env.S3_REGION ?? 'us-east-1',
+    region: process.env.AWS_REGION ?? process.env.S3_REGION ?? 'us-east-1',
     forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
   },
 });
