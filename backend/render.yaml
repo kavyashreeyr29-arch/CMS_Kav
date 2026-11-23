@@ -6,7 +6,7 @@ services:
     rootDir: backend
     # Free Render instances do not run pre-deploy commands, so initialize the
     # Neon schema during the build instead. The command is idempotent.
-    buildCommand: npm install --include=dev && npm run db:push && npm run build
+    buildCommand: npm install --include=dev && npm run db:push && npm run seed && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /health
     envVars:

@@ -16,19 +16,22 @@ const prisma = new PrismaClient();
 // facing S3_ENDPOINT env var (`localhost:9000`) — this script runs inside
 // the backend container, which can't reach the host's loopback.
 const S3_BUCKET = process.env.S3_BUCKET ?? 'elevatohub-attachments';
+const s3Endpoint = process.env.AWS_ENDPOINT_URL_S3 ?? process.env.S3_ENDPOINT;
 const s3 = new S3Client({
-  endpoint: 'http://minio:9000',
-  region: process.env.S3_REGION ?? 'us-east-1',
-  forcePathStyle: true,
+  ...(s3Endpoint ? { endpoint: s3Endpoint } : {}),
+  region: process.env.AWS_REGION ?? process.env.S3_REGION ?? 'us-east-1',
+  forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY ?? 'elevatohub',
-    secretAccessKey: process.env.S3_SECRET_KEY ?? 'elevatohub123',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? process.env.S3_ACCESS_KEY ?? 'elevatohub',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? process.env.S3_SECRET_KEY ?? 'elevatohub123',
   },
 });
 async function seedDocument(scope: 'projects' | 'sla-policies', ownerId: string, fileName: string, content: string): Promise<{ storageKey: string; fileSize: number }> {
   const storageKey = `${scope}/${ownerId}/${randomUUID()}-${fileName}`;
   const body = Buffer.from(content, 'utf8');
-  await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: storageKey, Body: body, ContentType: 'text/plain' }));
+  if (s3Endpoint) {
+    await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: storageKey, Body: body, ContentType: 'text/plain' }));
+  }
   return { storageKey, fileSize: body.byteLength };
 }
 

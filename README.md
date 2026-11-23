@@ -164,3 +164,12 @@ At scaffold time, Docker Desktop was running as a process but its CLI wasn't res
 wasn't installed at all — so nothing here has been run yet. Once `docker compose up --build` succeeds, treat
 that as the first real verification pass; expect to fix minor issues (dependency version drift, etc.) on that
 first run.
+
+## Production deployment
+
+- **Frontend (Vercel):** deploy `frontend/` and set `VITE_API_BASE_URL` to `https://elevatohub-api.onrender.com/api/v1`.
+- **Backend (Render):** use the root `render.yaml` Blueprint with the `Free` web-service plan. Set `DATABASE_URL` to the Neon production pooled connection string and `FRONTEND_URL` to the Vercel origin.
+- **Database (Neon):** use the `production` branch in the existing project. Render runs `prisma db push` during the build.
+- **Storage:** configure Neon/R2-compatible AWS variables or the existing S3 variables. The browser needs a public browser-reachable signed endpoint; the backend only creates signed URLs.
+
+Free Render services sleep after inactivity and can take 30–60 seconds to wake up.
