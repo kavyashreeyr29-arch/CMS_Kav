@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+# Prisma's query/schema engine binaries are dynamically linked against
+# OpenSSL, which node:20-alpine doesn't ship by default — without this the
+# engine fails to start and Prisma reports a confusing "Could not parse
+# schema engine response" JSON error instead of the real linker error.
+RUN apk add --no-cache openssl
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npx prisma generate
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start:dev"]

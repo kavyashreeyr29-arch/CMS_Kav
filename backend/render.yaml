@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: elevatohub-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    preDeployCommand: npm run db:push
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_ENCRYPTION_KEY
+        sync: false
+      - key: EMAIL_INTAKE_SECRET
+        sync: false
