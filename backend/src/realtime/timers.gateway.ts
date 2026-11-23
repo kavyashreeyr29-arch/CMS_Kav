@@ -1,7 +1,11 @@
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
-const corsOrigins = (process.env.FRONTEND_URL ?? process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173')
+const corsOrigins = [
+  process.env.FRONTEND_URL,
+  'https://frontend-kavyashree3.vercel.app',
+  process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
+].filter(Boolean).join(',')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);

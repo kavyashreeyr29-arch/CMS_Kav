@@ -2,7 +2,13 @@ export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
-  corsOrigin: process.env.FRONTEND_URL ?? process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
+  // Keep the stable Vercel production alias accepted alongside an explicitly
+  // configured FRONTEND_URL. Vercel deployment URLs are otherwise ephemeral.
+  corsOrigin: [
+    process.env.FRONTEND_URL,
+    'https://frontend-kavyashree3.vercel.app',
+    process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
+  ].filter(Boolean).join(','),
   databaseUrl: process.env.DATABASE_URL,
   redisUrl: process.env.REDIS_URL,
   jwt: {
