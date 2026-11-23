@@ -1,0 +1,63 @@
+/* Design tokens — ported 1:1 from docs/designsystem.md §2-§5.
+   --brand/--brand-soft/--accent carry the Elevatoz brand palette
+   (Primary #004053, Secondary #FFFFFF) — see CHANGELOG.md "rebrand".
+   Semantic/status colors (critical/high/medium/low/success, the ageing
+   scale, and the label palette) are deliberately left alone: those convey
+   meaning (priority, health, category), not brand identity, and changing
+   them would break conventions users already rely on. */
+:root {
+  --bg: #F4F5FA;
+  --surface: #FFFFFF;
+  --surface-2: #EEF0F6;
+  --ink: #13161F;
+  --ink-soft: #676F82;
+  --ink-faint: #9AA1B2;
+  --border: #E3E5EF;
+  --brand: #004053;
+  --brand-soft: #E3EEF0;
+  /* Was --lime (#B4FF39) — renamed since it's teal now, not lime; used for
+     the sidebar logo mark, active nav-item text, and the sidebar's
+     focus-visible outline (needs to read clearly against --ink). */
+  --accent: #2DD4BF;
+  /* The gold infinity-loop ring in the actual Elevatoz logo mark
+     (frontend/public/elevatoz-logo.png), sampled from the source PNG.
+     Kept distinct from --accent (teal, used for nav/UI highlight state)
+     since this is specifically the logo's own identity color — used only
+     where the logo mark itself appears (login page). */
+  --gold: #FBC210;
+
+  --critical: #E2483B;
+  --high: #F5A524;
+  --medium: #3B6CF4;
+  --low: #5B6472;
+  --success: #1DB88E;
+  --success-dark: #16946E;
+
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-pill: 20px;
+}
+
+/* Sequential ageing scale (designsystem.md §2.3) */
+:root {
+  --aging-0: #1DB88E;
+  --aging-1: #7FD858;
+  --aging-2: #F5C518;
+  --aging-3: #F5A524;
+  --aging-4: #E2483B;
+}
+
+/* Label / category palette (designsystem.md §2.4) — deterministic hash picks one of these */
+:root {
+  --label-0: #362F9E;
+  --label-1: #2563EB;
+  --label-2: #16946E;
+  --label-3: #C87F0A;
+  --label-4: #E2483B;
+  --label-5: #5B3DE0;
+  --label-6: #0EA5A5;
+  --label-7: #DB2777;
+  --label-8: #7C8598;
+  --label-9: #8E5A2B;
+}

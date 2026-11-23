@@ -1,0 +1,982 @@
+// ElevatoHub — Prisma schema
+// Mirrors the data model in docs/lld.md §2. Keep both in sync when evolving either.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Seniority {
+  lead
+  manager
+  senior_developer
+  junior_developer
+  intern
+  qa
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+// Real SDLC phases (not just Active/Planning/OnHold/Completed) — a project
+// moves through these the same way a ticket moves through its own status
+// pipeline, so leadership can see which lifecycle stage each project is in
+// at a glance. OnHold/Completed stay as the two non-linear operational states
+// (paused, or done) alongside the six linear phases.
+enum ProjectStatus {
+  Planning
+  RequirementAnalysis
+  Design
+  Implementation
+  Testing
+  Deployment
+  Maintenance
+  OnHold
+  Completed
+}
+
+enum Priority {
+  Critical
+  High
+  Medium
+  Low
+}
+
+enum TicketType {
+  Story
+  Epic
+  Bug
+  Feature
+  Enhancement
+  Task
+  ChangeRequest
+  Support
+}
+
+enum TicketStatus {
+  // Pre-development intake/approval pipeline — a ticket sits here before it's
+  // ready for engineering work at all. Modeled as statuses (not a separate
+  // "stage" concept) so ageing, Analytics, SLA, and the board's Status
+  // grouping all understand these stages for free, same as every other
+  // status. CHANGELOG.md "pre-dev approval pipeline".
+  RequirementGathering
+  CommercialApproval
+  RequirementApproval
+  ManagerApproval
+  Open
+  Assigned
+  InProgress
+  InReview
+  QATesting
+  Completed
+  Closed
+  Reopened
+}
+
+enum TicketSource {
+  InternalPM
+  CallCenter
+  CustomerSuccess
+  Operations
+  ClientPortal
+  Sales
+  EmailInbound
+}
+
+enum FieldGroup {
+  developer
+  qa
+  pm
+}
+
+enum MimeKind {
+  image
+  video
+  doc
+  audio
+}
+
+enum NotificationChannel {
+  email
+  teams
+}
+
+enum NotificationType {
+  assigned
+  mentioned
+  status
+  attachment
+  reopened
+  project
+  document
+  watching
+  approval
+}
+
+enum AIProviderType {
+  openai
+  anthropic
+  azure_openai
+  custom
+}
+
+enum AIFeature {
+  auto_categorize
+  summarize
+  smart_reply
+  sla_breach_prediction
+  duplicate_detection
+  root_cause_clustering
+}
+
+enum BreachRisk {
+  low
+  medium
+  high
+}
+
+enum TestCaseStatus {
+  pending
+  pass
+  fail
+  blocked
+}
+
+// ---------------------------------------------------------------------------
+// Org / identity
+// ---------------------------------------------------------------------------
+
+model Org {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users             User[]
+  slaPolicies       SlaPolicy[]
+  labels            Label[]
+  businessCategories BusinessCategory[]
+  aiProviderConfigs AiProviderConfig[]
+  aiUsageLogs       AiUsageLog[]
+  auditLogEntries   AuditLogEntry[]
+  workflowTransitions WorkflowTransition[]
+  githubIntegration GithubIntegration?
+
+  @@map("orgs")
+}
+
+model Role {
+  id             String  @id // e.g. "admin", "director", "pm", "developer", "qa", "callcenter", ...
+  key            String  @unique
+  label          String
+  group          String // "Full access" | "Field team" | "External"
+  defaultScope   String  @map("default_scope") // "all" | "team" | "source" | "reporter"
+  // Admin-configurable RBAC (CHANGELOG.md "dynamic roles") — null for the 12
+  // built-in roles until an admin edits them, in which case
+  // RolePermissions.ts's hardcoded ROLE_PERMISSIONS stays the default and
+  // this column is the override. Always set for a custom (non-built-in)
+  // role created via POST /roles. Shape is RolePermissions (role-permissions.ts).
+  permissionsJson Json?  @map("permissions_json")
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id              String     @id @default(uuid())
+  orgId           String     @map("org_id")
+  name            String
+  email           String     @unique
+  passwordHash    String     @map("password_hash")
+  avatarInitials  String?    @map("avatar_initials")
+  baseRoleId      String     @map("base_role_id")
+  seniority       Seniority?
+  status          UserStatus @default(active)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  org            Org               @relation(fields: [orgId], references: [id])
+  baseRole       Role              @relation(fields: [baseRoleId], references: [id])
+  teamMemberships TeamMembership[]
+  ledTeams        Team[]           @relation("TeamLead")
+  pmProjects      Project[]        @relation("ProjectManager")
+  reportedTickets Ticket[]         @relation("TicketReporter")
+  assignedTickets Ticket[]         @relation("TicketAssignee")
+  timeEntries     TimeEntry[]
+  notifications   Notification[]
+  comments        TicketComment[]
+  activityEntries ActivityLogEntry[]
+  auditLogEntries AuditLogEntry[]
+  fieldChangesMade TicketFieldChange[]
+  projectMemberships ProjectMember[]
+  testCasesCreated  TicketTestCase[] @relation("TestCaseCreator")
+  testCasesExecuted TicketTestCase[] @relation("TestCaseExecutor")
+  campaignsCreated  Campaign[] @relation("CampaignCreatedBy")
+  rewardsCreated    Reward[] @relation("RewardCreatedBy")
+  todoItemsAssigned ProjectTodoItem[] @relation("ProjectTodoAssignee")
+  todoItemsCreated  ProjectTodoItem[] @relation("ProjectTodoCreatedBy")
+  projectNotes      ProjectNote[] @relation("ProjectNoteAuthor")
+  approvalRequestsMade     ApprovalRequest[] @relation("ApprovalRequestedBy")
+  approvalRequestsToApprove ApprovalRequest[] @relation("ApprovalApprover")
+  approvalRequestsDecided  ApprovalRequest[] @relation("ApprovalDecidedBy")
+
+  @@map("users")
+}
+
+model Team {
+  id         String  @id @default(uuid())
+  name       String
+  leadUserId String? @map("lead_user_id")
+  // Admin-configurable extra "team hours" access, on top of the team's own
+  // Lead (who always sees it) — see common/permissions/team-access.ts.
+  // Independent of the viewer's own role's workHoursVisibility default, so
+  // an admin can widen access for a specific person/role to one team's
+  // hours without changing what that role can see anywhere else.
+  hoursViewerUserIds String[] @default([]) @map("hours_viewer_user_ids")
+  hoursViewerRoleIds String[] @default([]) @map("hours_viewer_role_ids")
+
+  lead        User?            @relation("TeamLead", fields: [leadUserId], references: [id])
+  memberships TeamMembership[]
+  projects    Project[]
+
+  @@map("teams")
+}
+
+model TeamMembership {
+  userId String @map("user_id")
+  teamId String @map("team_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+  @@map("team_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(uuid())
+  code        String        @unique
+  name        String
+  client      String
+  pmUserId    String        @map("pm_user_id")
+  teamId      String?       @map("team_id")
+  status      ProjectStatus @default(Planning)
+  priority    Priority
+  startDate   DateTime      @map("start_date")
+  endDate     DateTime      @map("end_date")
+  description String?
+  // Atomically incremented to generate displayId ("ATLAS-1001") — see
+  // TicketsService.nextDisplayId(). Avoids a race-prone COUNT(*) query.
+  ticketSeq   Int           @default(1000) @map("ticket_seq")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  pm          User               @relation("ProjectManager", fields: [pmUserId], references: [id])
+  team        Team?              @relation(fields: [teamId], references: [id])
+  tickets     Ticket[]
+  documents   ProjectDocument[]
+  slaPolicies SlaPolicy[]
+  members     ProjectMember[]
+  campaigns   Campaign[]
+  rewards     Reward[]
+  todoItems   ProjectTodoItem[]
+  notes       ProjectNote[]
+
+  @@map("projects")
+}
+
+enum CampaignStatus {
+  Planned
+  Active
+  Completed
+}
+
+// Basecamp-style "folder" inside a project — a standalone trackable entity
+// (not just a ticket label), so a campaign can carry its own timeline/status
+// independent of any one ticket. Tickets optionally reference one via
+// Ticket.campaignId; the org-wide Campaign summary on Analytics counts those.
+model Campaign {
+  id              String         @id @default(uuid())
+  projectId       String         @map("project_id")
+  name            String
+  description     String?
+  status          CampaignStatus @default(Planned)
+  startDate       DateTime?      @map("start_date")
+  endDate         DateTime?      @map("end_date")
+  createdByUserId String         @map("created_by_user_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id])
+  tickets   Ticket[]
+  documents ProjectDocument[]
+
+  @@index([projectId])
+  @@map("campaigns")
+}
+
+// Same pattern as Campaign — a standalone loyalty-reward record a project
+// can track (points/coupon/cashback programs tied to it), distinct from the
+// existing "Redemption Issue" ticket label which just tags a complaint.
+model Reward {
+  id              String    @id @default(uuid())
+  projectId       String    @map("project_id")
+  name            String
+  description     String?
+  rewardType      String?   @map("reward_type")
+  value           Decimal?  @db.Decimal(10, 2)
+  createdByUserId String    @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("RewardCreatedBy", fields: [createdByUserId], references: [id])
+  tickets   Ticket[]
+  documents ProjectDocument[]
+
+  @@index([projectId])
+  @@map("rewards")
+}
+
+// Lightweight per-project checklist — deliberately not a Ticket (no status
+// workflow, no SLA, no assignment notifications): Basecamp-style quick
+// to-dos that don't warrant the weight of a full ticket.
+model ProjectTodoItem {
+  id              String    @id @default(uuid())
+  projectId       String    @map("project_id")
+  title           String
+  done            Boolean   @default(false)
+  assigneeUserId  String?   @map("assignee_user_id")
+  dueDate         DateTime? @map("due_date")
+  createdByUserId String    @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee  User?   @relation("ProjectTodoAssignee", fields: [assigneeUserId], references: [id])
+  createdBy User    @relation("ProjectTodoCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([projectId])
+  @@map("project_todo_items")
+}
+
+// Basecamp "message board" style project-scoped note/update feed — distinct
+// from ticket comments (which are per-ticket) and from the org-wide Comms &
+// Tracking page (which is intake-channel configuration, not a discussion).
+model ProjectNote {
+  id           String   @id @default(uuid())
+  projectId    String   @map("project_id")
+  authorUserId String   @map("author_user_id")
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  User    @relation("ProjectNoteAuthor", fields: [authorUserId], references: [id])
+
+  @@index([projectId])
+  @@map("project_notes")
+}
+
+// docs/prd-phase2.md §11 — project-level access control, a new axis on top
+// of the existing role-scope model: a project with zero rows here is
+// visible to everyone the role-scope model already allows (so existing
+// projects aren't silently locked out the moment this feature ships); once
+// at least one member is explicitly added, membership-gated roles
+// (individual-contributor tiers — see ProjectsService.findAll) only see it
+// if they're in this list. Leadership tiers (Admin/Director/PM/Lead/Manager)
+// are never membership-gated.
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  addedBy   String   @map("added_by")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model ProjectDocument {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  fileName   String   @map("file_name")
+  fileSize   Int      @map("file_size")
+  mimeKind   MimeKind @map("mime_kind")
+  storageKey String   @map("storage_key")
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  // Which Basecamp-style folder this file belongs to — null/'general' is the
+  // main Docs & Files list. 'campaign'/'reward' files also carry the specific
+  // record they're attached to; 'communication'/'todo'/'commercial' are
+  // shared per-project buckets (no per-post/per-item attachment). 'commercial'
+  // is for agreements/SOWs/invoices — separated from general docs since these
+  // are typically access-sensitive and reviewed by a different audience.
+  section    String?  @map("section")
+  campaignId String?  @map("campaign_id")
+  rewardId   String?  @map("reward_id")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  reward   Reward?   @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+
+  @@map("project_documents")
+}
+
+// ---------------------------------------------------------------------------
+// Tickets
+// ---------------------------------------------------------------------------
+
+model Ticket {
+  id               String       @id @default(uuid())
+  displayId        String       @unique @map("display_id") // e.g. ATLAS-1001
+  projectId        String       @map("project_id")
+  parentTicketId   String?      @map("parent_ticket_id")
+  title            String
+  description      String?
+  type             TicketType
+  priority         Priority
+  status           TicketStatus @default(Open)
+  source           TicketSource
+  // Was a fixed Prisma enum (InnovateX/ElevatozX/AccquareX) — now a
+  // plain string matched against the admin-managed BusinessCategory list
+  // below (CHANGELOG.md "admin should be able to add... business
+  // categories"), the same pattern dynamic Roles already uses for
+  // baseRoleId (validated at the DTO/service layer, not by the DB column
+  // type, since the set of valid values can now change at runtime).
+  businessCategory String? @map("business_category")
+  labelId          String?      @map("label_id")
+  // Optional link to a project's standalone Campaign/Reward entity (Basecamp-
+  // style project folders) — distinct from labelId/businessCategory, which
+  // are free-text tags. Drives the org-wide Campaign summary on Analytics.
+  campaignId       String?      @map("campaign_id")
+  rewardId         String?      @map("reward_id")
+  reporterUserId   String       @map("reporter_user_id")
+  assigneeUserId   String?      @map("assignee_user_id")
+  watcherUserIds   String[]     @map("watcher_user_ids")
+  // A ticket can need more than one team to resolve it (e.g. a call-center-
+  // raised redemption issue that's part Tech, part Ops) — this is separate
+  // from the ticket's own project/team, which stays the "home" team.
+  // Extends ticketVisibilityWhere's 'team' scope so a Lead/Manager on any
+  // listed team can see the ticket even though it lives in another team's
+  // project, without loosening visibility for anyone else.
+  collaboratingTeamIds String[]  @default([]) @map("collaborating_team_ids")
+  startDate        DateTime?    @map("start_date")
+  dueDate          DateTime?    @map("due_date")
+  storyPoints      Decimal?     @map("story_points")
+  estimatedHours   Decimal?     @map("estimated_hours")
+  backlogRank      Int?         @map("backlog_rank")
+  slaBreached      Boolean      @default(false) @map("sla_breached")
+  slaBreachAt      DateTime?    @map("sla_breach_at")
+  slaBreachRisk    BreachRisk?  @map("sla_breach_risk")
+  // Set when status transitions to Closed, cleared on reopen — lets the UI
+  // show a real "closed on" date instead of approximating from updatedAt
+  // (which changes on every field edit, not just the close).
+  closedAt         DateTime?    @map("closed_at")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  project      Project              @relation(fields: [projectId], references: [id])
+  parent       Ticket?              @relation("TicketParent", fields: [parentTicketId], references: [id])
+  children     Ticket[]             @relation("TicketParent")
+  label        Label?               @relation(fields: [labelId], references: [id])
+  campaign     Campaign?            @relation(fields: [campaignId], references: [id])
+  reward       Reward?              @relation(fields: [rewardId], references: [id])
+  reporter     User                 @relation("TicketReporter", fields: [reporterUserId], references: [id])
+  assignee     User?                @relation("TicketAssignee", fields: [assigneeUserId], references: [id])
+  customFields TicketCustomField[]
+  comments     TicketComment[]
+  attachments  TicketAttachment[]
+  timeEntries  TimeEntry[]
+  activity     ActivityLogEntry[]
+  notifications Notification[]
+  fieldChanges TicketFieldChange[]
+  testCases    TicketTestCase[]
+  pullRequests GithubPullRequest[]
+  approvalRequests ApprovalRequest[]
+
+  @@index([projectId])
+  @@index([reporterUserId])
+  @@index([assigneeUserId])
+  @@index([status])
+  @@index([source])
+  @@map("tickets")
+}
+
+// Key/value custom fields keep the schema stable as new per-role fields are
+// added later (LLD §2.2) without further migrations.
+model TicketCustomField {
+  id         String     @id @default(uuid())
+  ticketId   String     @map("ticket_id")
+  fieldGroup FieldGroup @map("field_group")
+  fieldKey   String     @map("field_key")
+  fieldValue String     @map("field_value")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, fieldGroup, fieldKey])
+  @@map("ticket_custom_fields")
+}
+
+model Label {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  // Soft-deleted labels drop out of the create-ticket picker but stay
+  // attached to historical tickets so label-breakdown reporting still works
+  // (prd.md §11 — "Removing a label doesn't retroactively change historical
+  // tickets").
+  active    Boolean  @default(true)
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org     Org      @relation(fields: [orgId], references: [id])
+  tickets Ticket[]
+
+  @@unique([orgId, name])
+  @@map("labels")
+}
+
+// Admin-manageable list backing Ticket.businessCategory (see that field's
+// comment) — same soft-delete shape as Label, minus the FK relation since
+// business category is stored as a plain string on Ticket, not a foreign key.
+model BusinessCategory {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  active    Boolean  @default(true)
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, name])
+  @@map("business_categories")
+}
+
+model TicketComment {
+  id               String   @id @default(uuid())
+  ticketId         String   @map("ticket_id")
+  authorUserId     String   @map("author_user_id")
+  body             String
+  mentionedUserIds String[] @map("mentioned_user_ids")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorUserId], references: [id])
+
+  @@map("ticket_comments")
+}
+
+model TicketAttachment {
+  id         String   @id @default(uuid())
+  ticketId   String   @map("ticket_id")
+  fileName   String   @map("file_name")
+  fileSize   Int      @map("file_size")
+  mimeKind   MimeKind @map("mime_kind")
+  storageKey String   @map("storage_key")
+  uploadedBy String   @map("uploaded_by")
+  // docs/prd-phase2.md §12 — 'qa' tags evidence uploaded via the QA testing
+  // panel (screenshots/recordings/logs) so it renders grouped separately
+  // from general ticket attachments, without a parallel upload pipeline.
+  context    String?  @map("context")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Time tracking
+// ---------------------------------------------------------------------------
+
+enum TimeEntrySource {
+  timer
+  manual
+}
+
+model TimeEntry {
+  id               String    @id @default(uuid())
+  // Nullable — a manual timesheet entry (source: manual) may log a free-text
+  // task instead of a real ticket; a timer entry (source: timer) always has
+  // one, since it can only be started from a ticket.
+  ticketId         String?   @map("ticket_id")
+  userId           String    @map("user_id")
+  startedAt        DateTime  @map("started_at")
+  endedAt          DateTime? @map("ended_at")
+  // Fractional minutes (e.g. 0.50 = 30s) so a timer run under a minute
+  // doesn't round down to a misleading 0 — see CHANGELOG.md phase-2 entry.
+  durationMinutes  Decimal?  @map("duration_minutes") @db.Decimal(10, 2)
+  source           TimeEntrySource @default(timer) @map("source")
+  // Manual entries only — what the person typed as the task (may echo a
+  // linked ticket's title, or stand alone with no ticketId at all). Null for
+  // timer entries, which already have the ticket's own title for display.
+  taskName         String?   @map("task_name")
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id])
+
+  // Enforces "one active timer per person per ticket" at the DB level.
+  // Prisma cannot express a partial unique index directly — see
+  // prisma/migrations/*_add_active_timer_constraint for the raw SQL that adds:
+  //   CREATE UNIQUE INDEX ON time_entries (ticket_id, user_id) WHERE ended_at IS NULL;
+  // Untouched by the ticketId nullability change above: manual entries are
+  // always created with endedAt already set, so they can never match the
+  // partial index's `WHERE ended_at IS NULL` condition.
+  @@index([ticketId, userId])
+  @@index([userId, startedAt])
+  @@map("time_entries")
+}
+
+// ---------------------------------------------------------------------------
+// SLA
+// ---------------------------------------------------------------------------
+
+model SlaPolicy {
+  id                          String    @id @default(uuid())
+  orgId                       String    @map("org_id")
+  priority                    Priority?
+  projectId                   String?   @map("project_id")
+  clientName                  String?   @map("client_name")
+  firstResponseTargetMinutes  Int       @map("first_response_target_minutes")
+  resolutionTargetMinutes     Int       @map("resolution_target_minutes")
+  // docs/prd-phase2.md §10 — the signed SLA agreement/contract this policy
+  // is based on, same upload pattern as ProjectDocument/TicketAttachment.
+  documentFileName            String?   @map("document_file_name")
+  documentFileSize            Int?      @map("document_file_size")
+  documentMimeKind            MimeKind? @map("document_mime_kind")
+  documentStorageKey          String?   @map("document_storage_key")
+  createdBy                   String    @map("created_by")
+  updatedBy                   String    @map("updated_by")
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  org     Org      @relation(fields: [orgId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+
+  @@map("sla_policies")
+}
+
+// ---------------------------------------------------------------------------
+// Activity / notifications
+// ---------------------------------------------------------------------------
+
+// Field-level "who changed what, from what, to what, when" — distinct from
+// ActivityLogEntry's freeform human-readable text feed. Written alongside
+// (not instead of) that feed by TicketsService.updateFields()/updateStatus()/
+// reopen() — see docs/prd-phase2.md §3.3.
+model TicketFieldChange {
+  id        String   @id @default(uuid())
+  ticketId  String   @map("ticket_id")
+  changedBy String   @map("changed_by")
+  fieldName String   @map("field_name")
+  oldValue  String?  @map("old_value")
+  newValue  String?  @map("new_value")
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changer User  @relation(fields: [changedBy], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_field_changes")
+}
+
+// docs/prd-phase2.md §12 — QA testing module. A many-per-ticket child table
+// rather than TicketCustomField key/value rows, since a test case carries
+// its own pass/fail history (executedBy/executedAt) that key/value pairs
+// can't model cleanly.
+model TicketTestCase {
+  id             String         @id @default(uuid())
+  ticketId       String         @map("ticket_id")
+  title          String
+  steps          String?
+  expectedResult String?        @map("expected_result")
+  status         TestCaseStatus @default(pending)
+  regressionFlag Boolean        @default(false) @map("regression_flag")
+  executedBy     String?        @map("executed_by")
+  executedAt     DateTime?      @map("executed_at")
+  createdBy      String         @map("created_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  executor User?  @relation("TestCaseExecutor", fields: [executedBy], references: [id])
+  creator  User   @relation("TestCaseCreator", fields: [createdBy], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_test_cases")
+}
+
+model ActivityLogEntry {
+  id          String   @id @default(uuid())
+  ticketId    String?  @map("ticket_id")
+  projectCode String?  @map("project_code")
+  actorUserId String   @map("actor_user_id")
+  actionType  String   @map("action_type")
+  actionText  String   @map("action_text")
+  aiAssisted  Boolean  @default(false) @map("ai_assisted")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+  actor  User    @relation(fields: [actorUserId], references: [id])
+
+  @@index([ticketId])
+  @@map("activity_log")
+}
+
+// Org-level admin audit trail — deliberately separate from ActivityLogEntry
+// above, which is ticket-scoped (comments, status changes, attachments).
+// This one covers actions with no ticket at all: user create/disable/role
+// changes, role/permission edits, team management. Every admin-surface
+// mutation should call AuditLogService.record() — see CHANGELOG.md.
+model AuditLogEntry {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  actorUserId String   @map("actor_user_id")
+  // Dot-namespaced so the UI can group/filter by category, e.g.
+  // "user.created", "user.disabled", "user.role_changed",
+  // "role.created", "role.permissions_updated", "team.created",
+  // "team.member_added", "team.member_removed".
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  // Human-readable snapshot of the target (name/email/label) at the time of
+  // the action — the target row itself may later be edited or disabled, so
+  // this keeps old entries readable without a join that could go stale.
+  targetLabel String   @map("target_label")
+  // Free-form { field: { before, after } } diff — only the fields that
+  // actually changed, not a full before/after dump of every field.
+  changes     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org   Org  @relation(fields: [orgId], references: [id])
+  actor User @relation(fields: [actorUserId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@map("audit_log_entries")
+}
+
+model Notification {
+  id            String                @id @default(uuid())
+  recipientUserId String              @map("recipient_user_id")
+  ticketId      String?               @map("ticket_id")
+  type          NotificationType
+  subject       String
+  body          String
+  channels      NotificationChannel[]
+  read          Boolean               @default(false)
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  recipient User    @relation(fields: [recipientUserId], references: [id])
+  ticket    Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([recipientUserId])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// AI (bring-your-own)
+// ---------------------------------------------------------------------------
+
+model AiProviderConfig {
+  id               String          @id @default(uuid())
+  orgId            String          @map("org_id")
+  providerType     AIProviderType  @map("provider_type")
+  displayName      String          @map("display_name")
+  baseUrl          String          @map("base_url")
+  apiKeyEncrypted  Bytes           @map("api_key_encrypted") // write-only; never returned by any read API
+  defaultModel     String          @map("default_model")
+  isDefault        Boolean         @default(false) @map("is_default")
+  enabledFeatures  AIFeature[]     @map("enabled_features")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@map("ai_provider_configs")
+}
+
+model AiUsageLog {
+  id            String    @id @default(uuid())
+  orgId         String    @map("org_id")
+  feature       AIFeature
+  tokensEstimate Int      @map("tokens_estimate")
+  costEstimate  Decimal   @map("cost_estimate")
+  ticketId      String?   @map("ticket_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@map("ai_usage_log")
+}
+
+// ---------------------------------------------------------------------------
+// Configurable workflow (admin-defined transition gates)
+// ---------------------------------------------------------------------------
+
+// Replaces the old hardcoded transition rule (TicketsService.isAllowedRestrictedStatus).
+// One row = one allowed status transition for the org, plus the gate
+// conditions that must hold before the move is permitted. A move with no
+// matching row is rejected. Seeded with a sensible default flow
+// (prisma/seed.ts) so behavior is defined out of the box; admins edit it at
+// /workflow. Kept org-level (not per-project) for v1 — the whole org shares
+// one delivery process, matching how Roles/SLA defaults already work.
+model WorkflowTransition {
+  id                  String       @id @default(uuid())
+  orgId               String       @map("org_id")
+  fromStatus          TicketStatus @map("from_status")
+  toStatus            TicketStatus @map("to_status")
+  // Gates — all that are true must be satisfied for the transition to pass.
+  requiresAssignee    Boolean      @default(false) @map("requires_assignee")
+  requiresLinkedPr    Boolean      @default(false) @map("requires_linked_pr")
+  requiresApprovedPr  Boolean      @default(false) @map("requires_approved_pr")
+  requiresMergedPr    Boolean      @default(false) @map("requires_merged_pr")
+  requiresQaPass      Boolean      @default(false) @map("requires_qa_pass")
+  // Requires the ticket's most recent ApprovalRequest to be 'approved' —
+  // powers the intake pipeline (Requirement/Commercial/Manager approval) but
+  // usable on any transition (e.g. a final sign-off before Closed).
+  requiresApproval    Boolean      @default(false) @map("requires_approval")
+  // Suggested label pre-filled on the "Send for approval" form when this gate
+  // is what's blocking the move (e.g. "Commercial Approval") — cosmetic only,
+  // the actual gate check doesn't match on label.
+  approvalLabel       String?      @map("approval_label")
+  // Optional role restriction — empty means any role with ticket access may
+  // perform the transition (subject to the gates above).
+  allowedRoleIds      String[]     @map("allowed_role_ids")
+  createdAt           DateTime     @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, fromStatus, toStatus])
+  @@map("workflow_transitions")
+}
+
+// ---------------------------------------------------------------------------
+// GitHub integration (auto status sync + PR/branch visibility on tickets)
+// ---------------------------------------------------------------------------
+
+// Per-org GitHub connection. Token is write-only, AES-256-GCM encrypted the
+// same way AiProviderConfig.apiKeyEncrypted is (backend/src/ai/crypto.util.ts,
+// reused). webhookSecret verifies inbound webhook HMAC signatures. The
+// status-map columns drive automatic ticket transitions on PR events; any
+// auto-move still passes through the configured WorkflowTransition gates, so
+// GitHub can never push a ticket through a gate a human couldn't.
+model GithubIntegration {
+  id                  String       @id @default(uuid())
+  orgId               String       @unique @map("org_id")
+  repoOwner           String       @map("repo_owner")
+  repoName            String       @map("repo_name")
+  tokenEncrypted      Bytes?       @map("token_encrypted") // write-only; enables REST backfill; null = webhook-only
+  webhookSecret       String       @map("webhook_secret")
+  autoTransition      Boolean      @default(true) @map("auto_transition")
+  // Status a ticket auto-moves to when a linked PR opens / is approved /
+  // merges. Null disables that particular auto-move.
+  onPrOpenedStatus    TicketStatus? @map("on_pr_opened_status")
+  onPrApprovedStatus  TicketStatus? @map("on_pr_approved_status")
+  onPrMergedStatus    TicketStatus? @map("on_pr_merged_status")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  org         Org                 @relation(fields: [orgId], references: [id])
+
+  @@map("github_integrations")
+}
+
+enum PrState {
+  open
+  closed
+  merged
+}
+
+enum PrReviewState {
+  pending
+  approved
+  changes_requested
+}
+
+// A pull request (or its head branch) linked to a ticket. Linked
+// automatically by matching the ticket displayId (e.g. "ATLAS-1001") in the
+// PR title/body/branch name, or manually via the ticket Development panel.
+// State is a cache of GitHub's, refreshed by webhook events and manual sync.
+model GithubPullRequest {
+  id            String        @id @default(uuid())
+  ticketId      String        @map("ticket_id")
+  number        Int
+  title         String
+  url           String
+  headRef       String        @map("head_ref") // branch name
+  authorLogin   String        @map("author_login")
+  state         PrState       @default(open)
+  reviewState   PrReviewState @default(pending) @map("review_state")
+  merged        Boolean       @default(false)
+  linkedManually Boolean      @default(false) @map("linked_manually")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, number])
+  @@index([ticketId])
+  @@map("github_pull_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Generic approval requests (intake pipeline + any admin-configured gate)
+// ---------------------------------------------------------------------------
+
+enum ApprovalDecision {
+  pending
+  approved
+  rejected
+  changes_requested
+}
+
+// One row per "send for approval" action — a ticket keeps its full approval
+// history (every request + decision) for audit, not just current state.
+// Deliberately generic (a free-text label, not a fixed enum of approval
+// types) so it covers Commercial/Requirement/Manager approval today and any
+// future approval stage without a schema change — the admin wires *which*
+// transitions require one via WorkflowTransition.requiresApproval.
+model ApprovalRequest {
+  id                String           @id @default(uuid())
+  ticketId          String           @map("ticket_id")
+  label             String
+  requestedByUserId String           @map("requested_by_user_id")
+  // Either a specific person, or any user holding this role may decide —
+  // exactly one should be set (validated at the DTO/service layer, not the
+  // DB, since "exactly one of two nullable FKs" isn't expressible in Prisma).
+  approverUserId    String?          @map("approver_user_id")
+  approverRoleId    String?          @map("approver_role_id")
+  decision          ApprovalDecision @default(pending)
+  requestNote       String?          @map("request_note")
+  // What changes are needed — filled in on reject/changes_requested, the
+  // audit trail's answer to "what changes were requested".
+  decisionComment   String?          @map("decision_comment")
+  decidedByUserId   String?          @map("decided_by_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  decidedAt         DateTime?        @map("decided_at")
+
+  ticket      Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  requestedBy User   @relation("ApprovalRequestedBy", fields: [requestedByUserId], references: [id])
+  approver    User?  @relation("ApprovalApprover", fields: [approverUserId], references: [id])
+  decidedBy   User?  @relation("ApprovalDecidedBy", fields: [decidedByUserId], references: [id])
+
+  @@index([ticketId])
+  @@map("approval_requests")
+}
