@@ -32,7 +32,14 @@ export function Login() {
       // (null) value in this closure until the next render.
       navigate(landingPathFor(freshPermissions));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');
+      // A failed fetch (rather than an API response) means the frontend was
+      // started without the API service. Give a useful setup hint instead of
+      // the generic error, which made the quick-login accounts look broken.
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Cannot reach the sign-in service. Start the backend, then try again.',
+      );
     } finally {
       setSubmitting(false);
     }

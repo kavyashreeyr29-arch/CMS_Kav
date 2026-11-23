@@ -14,7 +14,11 @@ async function bootstrap() {
   app.setGlobalPrefix(config.get<string>('apiPrefix')!);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.enableCors({ origin: config.get<string>('corsOrigin'), credentials: true });
+  const corsOrigins = (config.get<string>('corsOrigin') ?? 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({ origin: corsOrigins, credentials: true });
 
   const port = config.get<number>('port')!;
   await app.listen(port);
