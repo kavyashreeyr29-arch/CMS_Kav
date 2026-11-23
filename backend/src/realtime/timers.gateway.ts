@@ -4,6 +4,8 @@ import { Server, Socket } from 'socket.io';
 const corsOrigins = [
   process.env.FRONTEND_URL,
   'https://frontend-kavyashree3.vercel.app',
+  'https://frontend-rho-kohl-71.vercel.app',
+  'https://frontend-t9bnjx1iv-kavyashree3.vercel.app',
   process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173',
 ].filter(Boolean).join(',')
   .split(',')
